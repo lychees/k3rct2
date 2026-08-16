@@ -141,7 +141,7 @@ document.getElementById('loading').style.display = 'none';
 // ---------- 启动 ----------
 const params = new URLSearchParams(location.search);
 
-async function bootSingle() {
+async function bootSingle(fromMP = false) {
   const saveData = peekSave();
   const world = new World();
   if (saveData && !params.get('new')) applyWorldData(world, saveData.world);
@@ -154,6 +154,7 @@ async function bootSingle() {
   } else {
     game.messages.add('欢迎来到 RCT2.js!修路 → 建设施 → 开放,吸引游客吧');
   }
+  if (fromMP) game.messages.add('多人服务器未连接(纯静态托管不支持联机),已转单人模式');
   installLoop(game);
 }
 
@@ -161,8 +162,8 @@ async function bootMulti(name) {
   // 1. 裸握手:等 welcome,缓冲其间到达的其他消息
   const hs = await connectAndJoin(name).catch(() => null);
   if (!hs) {
-    alert('连接服务器失败,改为单人模式');
-    return bootSingle();
+    // 连接失败(常见于 GitHub Pages 等纯静态托管:没有 WS 服务器)→ 自动转单机
+    return bootSingle(true);
   }
   const { ws, welcome, buffered } = hs;
   // 2. 用服务端世界建游戏
