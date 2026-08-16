@@ -1,0 +1,16 @@
+{
+  "name": "rct2-js",
+  "private": true,
+  "type": "module",
+  "description": "OpenRCT2 three.js fan remake",
+  "scripts": {
+    "start": "node serve.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  },
+  "dependencies": {
+    "three": "file:vendor/three-pkg",
+    "ws": "^8.21.3"
+  }
+}

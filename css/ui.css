@@ -1,0 +1,122 @@
+/* RCT2 风格 UI:铁板灰半透明窗口 + 顶部工具栏 + 底部状态栏 */
+:root {
+  --rct-frame: rgba(74, 78, 92, 0.92);
+  --rct-frame-dark: rgba(52, 55, 68, 0.95);
+  --rct-title: #3c3f52;
+  --rct-title-text: #f2f0d8;
+  --rct-bevel-hi: rgba(255, 255, 255, 0.35);
+  --rct-bevel-lo: rgba(0, 0, 0, 0.5);
+  --rct-text: #e8e6d0;
+  --rct-text-dim: #b9b7a4;
+  --rct-green: #7ec850;
+  --rct-yellow: #e8c838;
+  --rct-red: #d84a3a;
+  --rct-btn: rgba(96, 100, 116, 0.9);
+  --rct-btn-hover: rgba(124, 130, 148, 0.95);
+  --rct-btn-active: rgba(58, 90, 140, 0.95);
+  --rct-body: rgba(60, 64, 78, 0.88);
+  font-size: 13px;
+}
+
+* { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0e1a2e;
+  font-family: "Lucida Grande", "PingFang SC", "Microsoft YaHei", Geneva, sans-serif; }
+#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#ui { position: fixed; inset: 0; pointer-events: none; }
+#ui > * { pointer-events: auto; }
+#loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: #e8e6d0; background: #0e1a2e; font-size: 18px; z-index: 99; }
+
+/* ---------- 顶部工具栏 ---------- */
+.toolbar {
+  position: absolute; top: 0; left: 0; right: 0; height: 34px;
+  display: flex; align-items: stretch; gap: 2px; padding: 3px 4px;
+  background: var(--rct-frame); border-bottom: 2px solid var(--rct-bevel-lo);
+  box-shadow: 0 1px 0 var(--rct-bevel-hi) inset;
+}
+.toolbar .spacer { flex: 1; }
+.tb-btn {
+  width: 40px; height: 27px; border: 1px solid var(--rct-bevel-lo);
+  border-top-color: var(--rct-bevel-hi); border-left-color: var(--rct-bevel-hi);
+  background: var(--rct-btn); border-radius: 3px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; padding: 1px;
+}
+.tb-btn:hover { background: var(--rct-btn-hover); }
+.tb-btn.active { background: var(--rct-btn-active); }
+.tb-btn canvas { width: 22px; height: 22px; image-rendering: pixelated; }
+.tb-btn .money-label { color: var(--rct-yellow); font-weight: bold; font-size: 12px; }
+.tb-label { align-self: center; color: var(--rct-text-dim); font-size: 11px; padding: 0 6px; }
+
+/* ---------- 窗口 ---------- */
+.rct-win {
+  position: absolute; min-width: 140px; border-radius: 4px;
+  border: 1px solid var(--rct-bevel-lo);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.55), 0 1px 0 var(--rct-bevel-hi) inset;
+  background: var(--rct-body);
+  display: flex; flex-direction: column;
+}
+.rct-win .titlebar {
+  height: 20px; background: var(--rct-title); color: var(--rct-title-text);
+  font-size: 12px; font-weight: bold; line-height: 20px; padding: 0 4px 0 8px;
+  border-radius: 4px 4px 0 0; cursor: move; display: flex; align-items: center;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.6);
+}
+.rct-win .titlebar .close {
+  margin-left: auto; width: 16px; height: 16px; border-radius: 2px;
+  border: 1px solid var(--rct-bevel-lo); background: var(--rct-btn);
+  color: var(--rct-text); font-size: 10px; line-height: 14px; text-align: center; cursor: pointer;
+  padding: 0;
+}
+.rct-win .titlebar .close:hover { background: var(--rct-red); }
+.rct-win .content { padding: 6px; color: var(--rct-text); font-size: 12px; }
+
+/* 窗口内控件 */
+.rct-row { display: flex; align-items: center; gap: 4px; margin: 3px 0; flex-wrap: wrap; }
+.rct-btn {
+  background: var(--rct-btn); color: var(--rct-text); border: 1px solid var(--rct-bevel-lo);
+  border-top-color: var(--rct-bevel-hi); border-left-color: var(--rct-bevel-hi);
+  border-radius: 3px; padding: 4px 8px; font-size: 12px; cursor: pointer;
+}
+.rct-btn:hover { background: var(--rct-btn-hover); }
+.rct-btn.active { background: var(--rct-btn-active); color: #fff; }
+.rct-btn:disabled { opacity: 0.45; cursor: default; }
+.rct-btn.small { padding: 2px 6px; font-size: 11px; }
+.rct-list { border: 1px solid var(--rct-bevel-lo); background: rgba(30, 32, 42, 0.65);
+  border-radius: 3px; max-height: 220px; overflow-y: auto; }
+.rct-item { padding: 4px 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+.rct-item:hover { background: rgba(255,255,255,0.08); }
+.rct-item.selected { background: var(--rct-btn-active); }
+.rct-item .price { color: var(--rct-yellow); }
+.rct-item .sub { color: var(--rct-text-dim); font-size: 10px; }
+.rct-sep { height: 1px; background: var(--rct-bevel-lo); margin: 5px 0; }
+.pos { color: var(--rct-green); } .neg { color: var(--rct-red); } .money { color: var(--rct-yellow); }
+.hint { color: var(--rct-text-dim); font-size: 11px; }
+canvas.icon20 { width: 20px; height: 20px; image-rendering: pixelated; }
+
+/* 颜色选择点 */
+.rct-swatch { width: 16px; height: 16px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.6); cursor: pointer; }
+.rct-swatch.selected { outline: 2px solid #fff; }
+
+/* ---------- 底部状态栏 ---------- */
+.statusbar {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 26px;
+  background: var(--rct-frame-dark); border-top: 2px solid var(--rct-bevel-lo);
+  display: flex; align-items: center; padding: 0 8px; gap: 14px;
+  color: var(--rct-text); font-size: 12px;
+}
+.statusbar .cell { white-space: nowrap; }
+.statusbar .cash.neg { color: var(--rct-red); }
+.statusbar .ticker { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  color: var(--rct-text-dim); font-style: italic; }
+
+/* ---------- 光标处的气泡提示 ---------- */
+.tooltip {
+  position: absolute; pointer-events: none; background: rgba(20, 22, 30, 0.9);
+  color: var(--rct-text); padding: 2px 6px; border-radius: 3px; font-size: 11px;
+  transform: translate(-50%, -160%); white-space: nowrap; z-index: 50;
+}
+
+/* ---------- 下拉菜单 ---------- */
+.rct-menu { position: absolute; background: var(--rct-frame-dark);
+  border: 1px solid var(--rct-bevel-lo); border-radius: 3px; padding: 3px; z-index: 60; }
+.rct-menu .rct-item { min-width: 130px; }
