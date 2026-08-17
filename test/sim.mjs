@@ -102,6 +102,28 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
   }
 }
 
+// 乘坐可见:全部带 riderPos 的设施都能给出有限落点
+{
+  const flatIds = ['carousel', 'ferris', 'twist', 'haunted', 'bumper', 'pirate', 'tower'];
+  const mat2 = new THREE.MeshLambertMaterial({ vertexColors: true });
+  for (const id of flatIds) {
+    const def = DEF_BY_ID[id];
+    const built = def.build({ animSpeed: 1 }, mat2);
+    built.update(0.5, { animSpeed: 1 });
+    const out = { x: 0, y: 0, z: 0 };
+    let okR = !!built.riderPos;
+    if (okR) for (let i = 0; i < def.capacity; i++) {
+      built.riderPos(i, out);
+      if (!Number.isFinite(out.x + out.y + out.z)) { okR = false; break; }
+    }
+    assertT(okR, `乘坐可见:「${def.name}」riderPos 落点有效`);
+  }
+  const wRide = game.rides.list.find(r => r.def.id === 'woodie');
+  const out2 = { x: 0, y: 0, z: 0 };
+  wRide.api.riderPos(3, out2);
+  assertT(Number.isFinite(out2.x + out2.y + out2.z), '乘坐可见:过山车车厢 riderPos 落点有效');
+}
+
 // 关卡:定义合法 + 各地图有足够陆地可建园 + 现金目标判定 + 解锁
 {
   assertT(SCENARIOS.length >= 5, `至少 5 个关卡(实际 ${SCENARIOS.length})`);

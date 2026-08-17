@@ -4,6 +4,7 @@ import { Toolbar } from './toolbar.js';
 import { Statusbar } from './statusbar.js';
 import { Panels } from './panels.js';
 import { openRideWindow } from './ridewin.js';
+import { openPeepWindow } from './peepwin.js';
 
 export class UI {
   constructor(game) {
@@ -17,6 +18,7 @@ export class UI {
   }
   refreshToolbar() { this.toolbar.refresh(); }
   rideWindow(rideId) { return openRideWindow(this.game, this.wm, rideId); }
+  peepWindow(kind, id) { return openPeepWindow(this.game, this.wm, kind, id); }
   closeRideWindow(rideId) { this.wm.close('ride-' + rideId); }
   openSave() { this.panels.open('save'); }
 

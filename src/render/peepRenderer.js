@@ -6,6 +6,9 @@ export const SHIRT_COLS = [0xd84a3a, 0x3a7ad8, 0x48b050, 0xe8b830, 0xc86ad8, 0xe
 export const SKIN_COLS = [0xf0c8a0, 0xe0b088, 0xc89070, 0xa06848];
 export const PANTS_COLS = [0x30405f, 0x503828, 0x405060, 0x603030, 0x2a4a2a];
 
+// 乘坐中游客落点的 scratch 对象(riderPos 输出,设施组局部坐标)
+const _rpOut = { x: 0, y: 0, z: 0 };
+
 export class PeepRenderer {
   constructor(game) {
     this.game = game;
@@ -56,51 +59,62 @@ export class PeepRenderer {
         continue;
       }
       const p = list[i];
-      if (p.hidden) {
+      // 乘坐中的游客:设施提供了 riderPos 就把人画进设施里(木马座舱/过山车车厢…),否则照例隐藏
+      const ride = p.state === 'ride' ? p.queueRide : null;
+      const riderPos = ride?.api?.riderPos;
+      if (p.hidden && !riderPos) {
         for (const m of this.parts) m.setMatrixAt(i, zeroM);
         continue;
       }
-      const gy = this.groundY(p.tile[0], p.tile[1], w);
+      let px = p.x, pz = p.z, gy;
+      if (riderPos) {
+        const idx = Math.max(0, ride.riders.indexOf(p));
+        riderPos.call(ride.api, idx, _rpOut);
+        const gp = ride.group.position;           // 组内局部坐标 → 世界坐标
+        px = gp.x + _rpOut.x; pz = gp.z + _rpOut.z; gy = gp.y + _rpOut.y;
+      } else {
+        gy = this.groundY(p.tile[0], p.tile[1], w);
+      }
       const moving = p.state === 'wander' || p.state === 'enter' || p.state === 'leaving' || p.state === 'walk';
       const bob = moving ? Math.abs(Math.sin(p.walkT * 9)) * 0.05 : Math.sin(p.walkT * 2 + p.id) * 0.01;
       const swing = moving ? Math.sin(p.walkT * 9) * 0.09 : 0;
       q.setFromAxisAngle(up, p.yaw);
       const fx = Math.sin(p.yaw + Math.PI), fz = Math.cos(p.yaw + Math.PI);
       const sx = Math.cos(p.yaw + Math.PI), szz = -Math.sin(p.yaw + Math.PI);
-      pos.set(p.x, gy + 0.58 + bob, p.z); m4.compose(pos, q, scl);
+      pos.set(px, gy + 0.58 + bob, pz); m4.compose(pos, q, scl);
       this.mBody.setMatrixAt(i, m4);
       col.setHex(p.shirt); this.mBody.setColorAt(i, col);
-      pos.set(p.x, gy + 1.02 + bob, p.z); m4.compose(pos, q, scl);
+      pos.set(px, gy + 1.02 + bob, pz); m4.compose(pos, q, scl);
       this.mHead.setMatrixAt(i, m4);
       col.setHex(p.skin); this.mHead.setColorAt(i, col);
-      pos.set(p.x, gy + 1.17 + bob, p.z); m4.compose(pos, q, scl);
+      pos.set(px, gy + 1.17 + bob, pz); m4.compose(pos, q, scl);
       this.mHair.setMatrixAt(i, m4);
-      pos.set(p.x + fx * swing + sx * 0.09, gy + 0.16 + (swing > 0 ? swing * 0.4 : 0), p.z + fz * swing + szz * 0.09);
+      pos.set(px + fx * swing + sx * 0.09, gy + 0.16 + (swing > 0 ? swing * 0.4 : 0), pz + fz * swing + szz * 0.09);
       m4.compose(pos, q, scl); this.mLegL.setMatrixAt(i, m4);
       col.setHex(p.pants); this.mLegL.setColorAt(i, col);
-      pos.set(p.x - fx * swing - sx * 0.09, gy + 0.16 + (-swing > 0 ? -swing * 0.4 : 0), p.z - fz * swing - szz * 0.09);
+      pos.set(px - fx * swing - sx * 0.09, gy + 0.16 + (-swing > 0 ? -swing * 0.4 : 0), pz - fz * swing - szz * 0.09);
       m4.compose(pos, q, scl); this.mLegR.setMatrixAt(i, m4);
       this.mLegR.setColorAt(i, col);
-      // 员工帽(只有员工记录带 capCol,游客永不戴帽 → 一眼区分)
-      if (p.capCol) {
-        pos.set(p.x, gy + 1.26 + bob, p.z); m4.compose(pos, q, scl);
+      // 员工帽(只有员工记录带 capCol,游客永不戴帽 → 一眼区分;乘坐中不渲染帽)
+      if (!riderPos && p.capCol) {
+        pos.set(px, gy + 1.26 + bob, pz); m4.compose(pos, q, scl);
         this.mCap.setMatrixAt(i, m4);
         col.setHex(p.capCol); this.mCap.setColorAt(i, col);
       } else {
         this.mCap.setMatrixAt(i, zeroM);
       }
-      if (p.hasSouvenir) {
+      if (!riderPos && p.hasSouvenir) {
         const bt = performance.now() / 1000;
-        pos.set(p.x + sx * 0.3, gy + 1.55 + Math.sin(bt * 2 + p.id) * 0.08, p.z + szz * 0.3);
+        pos.set(px + sx * 0.3, gy + 1.55 + Math.sin(bt * 2 + p.id) * 0.08, pz + szz * 0.3);
         m4.compose(pos, q, scl);
         this.mBalloon.setMatrixAt(i, m4);
         col.setHex(p.balloonCol); this.mBalloon.setColorAt(i, col);
       } else {
         this.mBalloon.setMatrixAt(i, zeroM);
       }
-      // 雨伞(下雨时撑起)
-      if (p.hasUmbrella && this.game.weather?.mode === 'rain') {
-        pos.set(p.x, gy + 1.62 + bob * 0.5, p.z);
+      // 雨伞(下雨时撑起;乘坐中不收伞——直接收起)
+      if (!riderPos && p.hasUmbrella && this.game.weather?.mode === 'rain') {
+        pos.set(px, gy + 1.62 + bob * 0.5, pz);
         m4.compose(pos, q, scl);
         this.mUmbrella.setMatrixAt(i, m4);
         col.setHex(p.shirt).multiplyScalar(1.1); this.mUmbrella.setColorAt(i, col);

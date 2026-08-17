@@ -116,7 +116,21 @@ function buildCarousel(ride, mat) {
   }
   spin.add(meshOf(dyn, mat));
   g.add(spin);
-  return { group: g, update: (dt, r) => { spin.rotation.y += dt * r.animSpeed * 1.1; } };
+  return {
+    group: g,
+    update: (dt, r) => { spin.rotation.y += dt * r.animSpeed * 1.1; },
+    // 游客落点:前 8 人骑木马,其余站台面(随台旋转)
+    riderPos(i, out) {
+      const th = spin.rotation.y;
+      if (i < 8) {
+        const a = i / 8 * Math.PI * 2 + th;
+        out.x = cx + Math.cos(a) * 1.55; out.y = 0.78; out.z = cz + Math.sin(a) * 1.55;
+      } else {
+        const a = (i - 8) * 1.7 + th + 0.4;
+        out.x = cx + Math.cos(a) * 0.85; out.y = 0.42; out.z = cz + Math.sin(a) * 0.85;
+      }
+    },
+  };
 }
 
 function buildFerris(ride, mat) {
@@ -166,6 +180,11 @@ function buildFerris(ride, mat) {
         cabins[i].position.set(cx + Math.cos(a) * R, cy + Math.sin(a) * R - 0.32, cz);
       }
     },
+    // 游客落点:每座舱 2 人
+    riderPos(i, out) {
+      const cab = cabins[i % 8];
+      out.x = cab.position.x; out.y = cab.position.y - 0.06; out.z = cz + (i < 8 ? -0.1 : 0.1);
+    },
   };
 }
 
@@ -204,6 +223,15 @@ function buildTwist(ride, mat) {
       ang += dt * r.animSpeed * 1.5;
       spin.rotation.y = ang;
       for (const { carM } of arms) carM.rotation.y = -ang * 2.4;
+    },
+    // 游客落点:每臂 4 人(随车绕中心公转)
+    riderPos(i, out) {
+      const ai = i % 4, slot = (i / 4) | 0;
+      const th = spin.rotation.y + ai * Math.PI / 2;
+      const tx = 2.1 + (slot === 1 ? 0.16 : slot === 2 ? -0.16 : 0);
+      const tz = (slot === 3 ? 0.14 : 0) - 0.02;
+      const ca = Math.cos(th), sa = Math.sin(th);
+      out.x = cx + tx * ca + tz * sa; out.y = 0.6; out.z = cz - tx * sa + tz * ca;
     },
   };
 }
@@ -253,7 +281,14 @@ function buildHaunted(ride, mat) {
   ghost.position.set(cx, 4.6, cz + 1.2);
   g.add(ghost);
   let t = 0;
-  return { group: g, update: (dt, r) => { t += dt * (0.4 + r.animSpeed); ghost.rotation.y = t * 2.1; ghost.position.y = 4.6 + Math.sin(t * 1.7) * 0.5; } };
+  return {
+    group: g,
+    update: (dt, r) => { t += dt * (0.4 + r.animSpeed); ghost.rotation.y = t * 2.1; ghost.position.y = 4.6 + Math.sin(t * 1.7) * 0.5; },
+    // 游客落点:屋内脏黑走一圈(本身就难看清,只保证"人进去了")
+    riderPos(i, out) {
+      out.x = cx - 0.6 + (i % 4) * 0.4; out.y = 0.05; out.z = cz - 0.6 + ((i / 4) | 0) * 0.5;
+    },
+  };
 }
 
 // 碰碰车:平台 + 游走碰撞的车
@@ -293,6 +328,11 @@ function buildBumper(ride, mat) {
         c.car.rotation.y = -c.a + (c.dir > 0 ? 0 : Math.PI);
       }
     },
+    // 游客落点:每车 2 人,随车游走
+    riderPos(i, out) {
+      const c = cars[i % 6];
+      out.x = c.car.position.x + (i < 6 ? -0.16 : 0.16); out.y = 0.52; out.z = c.car.position.z;
+    },
   };
 }
 
@@ -328,6 +368,14 @@ function buildPirate(ride, mat) {
       const amp = Math.min(1.15, 0.25 + rd.animSpeed * 0.9);
       ship.rotation.z = Math.sin(t * 1.7) * amp;
     },
+    // 游客落点:两排座位,随船摆动(绕挂点 z 轴旋转)
+    riderPos(i, out) {
+      const th = ship.rotation.z;
+      const x0 = -1.15 + (i % 8) * (2.3 / 7);
+      const y0 = -1.12;
+      const ca = Math.cos(th), sa = Math.sin(th);
+      out.x = cx + x0 * ca - y0 * sa; out.y = topY + x0 * sa + y0 * ca; out.z = cz + (i < 8 ? -0.22 : 0.22);
+    },
   };
 }
 
@@ -356,6 +404,11 @@ function buildTower(ride, mat) {
       const cycle = (Math.sin(t * 0.55 - Math.PI / 2) + 1) / 2;
       cabin.position.y = 1.2 + cycle * 8.4;
       cabin.rotation.y = t * 0.35;
+    },
+    // 游客落点:环舱一圈,随舱升降旋转
+    riderPos(i, out) {
+      const a = i / 8 * Math.PI * 2 + cabin.rotation.y;
+      out.x = cx + Math.cos(a) * 0.72; out.y = cabin.position.y + 0.32; out.z = cz + Math.sin(a) * 0.72;
     },
   };
 }

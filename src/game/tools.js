@@ -70,14 +70,41 @@ export class Tools {
     if (this.game.fp?.active) return;   // 第一视角下左键用于环视
     const p = this._pick(e);
     if (!p) return;
-    // 无工具时:左键点击设施 → 打开设施窗口
+    // 无工具时:优先点选小人(查看状态),其次点击设施 → 打开设施窗口
     if (!this.tool) {
+      const hit = this._pickPeep(e);
+      if (hit) {
+        this.game.ui?.peepWindow(hit.kind, hit.peep.id);
+        this.game.audio?.play('click');
+        return;
+      }
       const w = this.game.world, i = w.idx(p.x, p.y);
       if (w.rideTile[i] !== -1) this.game.rides.openWindow(w.rideTile[i]);
       return;
     }
     if (this.tool.type === 'land') this._applyLand(p, e, false);
     else this._applyAt(p, e, false);
+  }
+
+  // 屏幕点附近找游客/员工(身体中心投影,18px 容差)
+  _pickPeep(e) {
+    const g = this.game, cam = g.camera, w = g.world;
+    const v = new THREE.Vector3();
+    let best = null, bestD = 18;
+    for (const grp of [['guest', g.peeps?.list], ['staff', g.staff?.list]]) {
+      const kind = grp[0], list = grp[1];
+      if (!list) continue;
+      for (const p of list) {
+        if (p.hidden || !p.tile) continue;
+        let gy = w.surfaceY(p.tile[0], p.tile[1]);
+        if (w.path[w.idx(p.tile[0], p.tile[1])] !== PATH.NONE) gy = Math.max(...w.corners(p.tile[0], p.tile[1])) * H_UNIT + 0.035;
+        v.set(p.x, gy + 0.8, p.z);
+        const s = cam.groundToScreen(v);
+        const d = Math.hypot(s.x - e.clientX, s.y - e.clientY);
+        if (d < bestD) { bestD = d; best = { kind, peep: p }; }
+      }
+    }
+    return best;
   }
 
   // ---------- 执行:全部经 dispatchAction(单机=本地扣费;联机=发给服务端) ----------

@@ -178,6 +178,11 @@ export function buildCoaster(game, ride) {
     setExternal: (s, mode) => { external = { s, mode }; },
     serialize: () => ({ s: state.s, mode: state.mode }),
     restore: (d) => { if (d) { state.s = d.s || 0; state.mode = d.mode || 'load'; } },
+    // 游客落点:每节车厢 2 人(绝对世界坐标,与轨道同坐标系)
+    riderPos(i, out) {
+      const car = cars[Math.min(3, i >> 1)];
+      out.x = car.position.x + (i & 1 ? 0.16 : -0.16); out.y = car.position.y + 0.42; out.z = car.position.z;
+    },
   };
 }
 
