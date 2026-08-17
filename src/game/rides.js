@@ -4,6 +4,7 @@ import { TILE, H_UNIT, COL, WATER_H, PATH, MAP_W, MAP_H } from '../config.js';
 import { GeomBuilder } from '../render/geom.js';
 import { World } from '../world/world.js';
 import { buildCoaster, coasterGhostGeometry } from './coaster.js';
+import { buildCustomCoaster, COASTER_PIECES, PIECE_BY_ID, MAX_LEVEL, MAX_PIECES, exitOf, canFinish } from './coasterEdit.js';
 
 // ---------------- 设施定义 ----------------
 export const RIDE_DEFS = [
@@ -26,6 +27,12 @@ export const RIDE_DEFS = [
     id: 'woodie', name: '木制过山车', kind: 'coaster', cat: 'ride', desc: '预制布局:提升坡 + 俯冲 + 回旋',
     w: 18, h: 11, cost: 4200, upkeep: 140, capacity: 16, duration: 0,
     basePrice: 7, excitement: 66, intensity: 61, nausea: 36,
+  },
+  {
+    id: 'mycoaster', name: '定制过山车', kind: 'coaster', cat: 'ride', custom: true,
+    desc: '轨道编辑器:站台起逐段铺设,闭环即成你自己的过山车',
+    w: 1, h: 1, cost: 0, upkeep: 110, capacity: 8, duration: 0,
+    basePrice: 6, excitement: 55, intensity: 50, nausea: 32,
   },
   {
     id: 'burger', name: '汉堡店', kind: 'shop', cat: 'shop', desc: '游客饿了会来买', sells: 'food',
@@ -76,6 +83,36 @@ export const RIDE_DEFS = [
     id: 'tower', name: '观光塔', kind: 'flat', cat: 'ride', desc: '升上高空俯瞰全园',
     w: 2, h: 2, cost: 1500, upkeep: 55, capacity: 8, duration: 16,
     basePrice: 4, excitement: 40, intensity: 20, nausea: 10, build: buildTower,
+  },
+  {
+    id: 'slide', name: '螺旋滑梯', kind: 'flat', cat: 'ride', desc: '爬上高塔,盘旋滑下',
+    w: 3, h: 3, cost: 800, upkeep: 30, capacity: 10, duration: 9,
+    basePrice: 2.5, excitement: 36, intensity: 26, nausea: 12, build: buildSlide,
+  },
+  {
+    id: 'teacups', name: '旋转茶杯', kind: 'flat', cat: 'ride', desc: '公转自转,优雅眩晕',
+    w: 3, h: 3, cost: 950, upkeep: 32, capacity: 12, duration: 12,
+    basePrice: 3, excitement: 42, intensity: 32, nausea: 28, build: buildTeacups,
+  },
+  {
+    id: 'chairs', name: '飞天秋千', kind: 'flat', cat: 'ride', desc: '吊椅飞旋,凌空兜风',
+    w: 3, h: 3, cost: 1300, upkeep: 42, capacity: 16, duration: 14,
+    basePrice: 3.5, excitement: 48, intensity: 42, nausea: 32, build: buildChairs,
+  },
+  {
+    id: 'droptower', name: '跳楼机', kind: 'flat', cat: 'ride', desc: '一坠到底,心跳骤停',
+    w: 2, h: 2, cost: 1800, upkeep: 60, capacity: 8, duration: 10,
+    basePrice: 4.5, excitement: 60, intensity: 68, nausea: 26, build: buildDropTower,
+  },
+  {
+    id: 'frisbee', name: '大摆锤', kind: 'flat', cat: 'ride', desc: '摆到天际还自转',
+    w: 4, h: 2, cost: 1900, upkeep: 62, capacity: 16, duration: 15,
+    basePrice: 4.5, excitement: 62, intensity: 66, nausea: 45, build: buildFrisbee,
+  },
+  {
+    id: 'topspin', name: '太空梭', kind: 'flat', cat: 'ride', desc: '整排翻转,天旋地转',
+    w: 4, h: 2, cost: 1700, upkeep: 58, capacity: 8, duration: 13,
+    basePrice: 4, excitement: 58, intensity: 64, nausea: 48, build: buildTopspin,
   },
 ];
 export const DEF_BY_ID = Object.fromEntries(RIDE_DEFS.map(d => [d.id, d]));
@@ -412,9 +449,225 @@ function buildTower(ride, mat) {
     },
   };
 }
-// 入口/出口小屋(几何以原点为中心,由 mesh.position 放到局部 tile 坐标)
-function buildHut(mat, colorHex) {
+// 螺旋滑梯:中心塔 + 螺旋滑道,游客盘旋滑下
+function buildSlide(ride, mat) {
+  const g = new THREE.Group();
   const b = new GeomBuilder();
+  const cx = 1.5 * TILE, cz = 1.5 * TILE;
+  const TURNS = 1.5;
+  b.frustum(cx, 0, cz, 0.9, 0.7, 5.2, 0xd8d0c0, 1, 8);           // 塔身
+  b.blob(cx, 5.4, cz, 0.5, 0xd84a3a, 1.1);                        // 顶球
+  const SEGS = 18;
+  for (let i = 0; i < SEGS; i++) {                                 // 滑道(绕塔 1.5 圈)
+    const a0 = i / SEGS * TURNS * Math.PI * 2, a1 = (i + 1) / SEGS * TURNS * Math.PI * 2;
+    const y0 = 4.6 - i / SEGS * 4.2, y1 = 4.6 - (i + 1) / SEGS * 4.2;
+    b.bar([cx + Math.cos(a0) * 1.3, y0, cz + Math.sin(a0) * 1.3],
+      [cx + Math.cos(a1) * 1.3, y1, cz + Math.sin(a1) * 1.3], 0.5, 0.12, 0x88c8e8, 1);
+  }
+  g.add(meshOf(b, mat));
+  let t = 0;
+  return {
+    group: g,
+    update: (dt, rd) => { t += dt * (0.3 + rd.animSpeed * 0.7); },
+    // 游客落点:各自相位沿滑道下滑
+    riderPos(i, out) {
+      const ph = (t * 0.28 + i * 0.13) % 1;
+      const a = ph * TURNS * Math.PI * 2;
+      out.x = cx + Math.cos(a) * 1.3; out.y = 4.6 - ph * 4.2 + 0.2; out.z = cz + Math.sin(a) * 1.3;
+    },
+  };
+}
+
+// 旋转茶杯:公转底盘 + 自转茶杯
+function buildTeacups(ride, mat) {
+  const g = new THREE.Group();
+  const b = new GeomBuilder();
+  const cx = 1.5 * TILE, cz = 1.5 * TILE;
+  b.frustum(cx, 0, cz, 2.6, 2.5, 0.22, 0xd8c8a8, 1, 10);          // 底盘
+  g.add(meshOf(b, mat));
+  const spin = new THREE.Group();
+  spin.position.set(cx, 0.22, cz);
+  const db = new GeomBuilder();
+  db.post(0, 0, 0, 0.3, 0.6, 0xe8b830, 1);
+  spin.add(meshOf(db, mat));
+  const cups = [];
+  const cupCols = [0xd84a3a, 0x3a7ad8, 0x48b050, 0xc86ad8];
+  for (let i = 0; i < 4; i++) {
+    const cup = new THREE.Group();
+    const cb = new GeomBuilder();
+    cb.frustum(0, 0, 0, 0.42, 0.5, 0.5, cupCols[i], 1, 8);        // 杯体
+    cup.add(meshOf(cb, mat));
+    cup.position.set(Math.cos(i / 4 * Math.PI * 2) * 1.4, 0, Math.sin(i / 4 * Math.PI * 2) * 1.4);
+    spin.add(cup);
+    cups.push(cup);
+  }
+  g.add(spin);
+  return {
+    group: g,
+    update: (dt, rd) => {
+      spin.rotation.y += dt * rd.animSpeed * 1.4;
+      for (const cup of cups) cup.rotation.y -= dt * rd.animSpeed * 2.2;
+    },
+    // 游客落点:杯内,随公转
+    riderPos(i, out) {
+      const th = spin.rotation.y;
+      const lx = Math.cos((i % 4) * Math.PI / 2) * 1.4, lz = Math.sin((i % 4) * Math.PI / 2) * 1.4;
+      const ca = Math.cos(th), sa = Math.sin(th);
+      out.x = cx + lx * ca + lz * sa + ((i >> 2) - 1) * 0.12; out.y = 0.57; out.z = cz - lx * sa + lz * ca;
+    },
+  };
+}
+
+// 飞天秋千:立柱 + 旋转顶盖 + 吊椅
+function buildChairs(ride, mat) {
+  const g = new THREE.Group();
+  const b = new GeomBuilder();
+  const cx = 1.5 * TILE, cz = 1.5 * TILE;
+  b.frustum(cx, 0, cz, 1.0, 0.8, 0.25, 0xd8d0c0, 1, 8);
+  b.frustum(cx, 0.2, cz, 0.45, 0.3, 3.4, 0xc8c8d0, 1, 8);         // 立柱
+  g.add(meshOf(b, mat));
+  const top = new THREE.Group();
+  top.position.set(cx, 3.6, cz);
+  const tb = new GeomBuilder();
+  tb.frustum(0, 0, 0, 1.5, 1.1, 0.3, 0xd84a3a, 1, 10);            // 顶盖
+  top.add(meshOf(tb, mat));
+  for (let i = 0; i < 8; i++) {
+    const seat = new THREE.Group();
+    const sb = new GeomBuilder();
+    sb.post(0, -1.3, 0, 0.03, 1.3, 0x8a8d8f, 1);                   // 吊索
+    sb.box(0, -1.55, 0, 0.4, 0.28, 0.4, [0xe8b830, 0x3a7ad8, 0x48b050, 0xc86ad8][i % 4], 1);
+    seat.add(meshOf(sb, mat));
+    seat.position.set(Math.cos(i / 8 * Math.PI * 2) * 1.25, 0, Math.sin(i / 8 * Math.PI * 2) * 1.25);
+    top.add(seat);
+  }
+  g.add(top);
+  return {
+    group: g,
+    update: (dt, rd) => { top.rotation.y += dt * rd.animSpeed * 1.6; },
+    // 游客落点:吊椅内,随顶盖转
+    riderPos(i, out) {
+      const th = top.rotation.y;
+      const lx = Math.cos(i / 8 * Math.PI * 2) * 1.25, lz = Math.sin(i / 8 * Math.PI * 2) * 1.25;
+      const ca = Math.cos(th), sa = Math.sin(th);
+      out.x = cx + lx * ca + lz * sa; out.y = 2.1; out.z = cz - lx * sa + lz * ca;
+    },
+  };
+}
+
+// 跳楼机:高塔 + 速升速降环舱
+function buildDropTower(ride, mat) {
+  const g = new THREE.Group();
+  const b = new GeomBuilder();
+  const cx = 1 * TILE, cz = 1 * TILE;
+  b.frustum(cx, 0, cz, 1.4, 1.2, 0.4, 0xc8c8d0, 1, 8);
+  b.frustum(cx, 0.3, cz, 0.5, 0.22, 12, 0x8a6ad8, 1, 8);          // 塔身
+  b.blob(cx, 12.5, cz, 0.35, 0xe8b830, 1.1);
+  g.add(meshOf(b, mat));
+  const gon = new THREE.Group();
+  const gb = new GeomBuilder();
+  gb.frustum(0, 0, 0, 0.95, 0.85, 0.4, 0xd84a3a, 1, 8);           // 环形座舱
+  gon.add(meshOf(gb, mat));
+  gon.position.set(cx, 1, cz);
+  g.add(gon);
+  let t = 0;
+  return {
+    group: g,
+    update: (dt, rd) => {
+      t += dt * rd.animSpeed;
+      const ph = t % 7;
+      let y;
+      if (ph < 3.5) y = 1 + (ph / 3.5) * 9;                        // 慢升
+      else if (ph < 4.0) { const k = (ph - 3.5) / 0.5; y = 10 - k * k * 9; }   // 速降
+      else y = 1 + Math.abs(Math.sin((ph - 4) * 6)) * 0.4 * Math.max(0, 5 - ph); // 余震
+      gon.position.y = y;
+    },
+    // 游客落点:环舱一圈,随舱升降
+    riderPos(i, out) {
+      const a = i / 8 * Math.PI * 2;
+      out.x = cx + Math.cos(a) * 0.68; out.y = gon.position.y + 0.35; out.z = cz + Math.sin(a) * 0.68;
+    },
+  };
+}
+
+// 大摆锤:门架 + 摆动臂 + 自转圆盘
+function buildFrisbee(ride, mat) {
+  const g = new THREE.Group();
+  const b = new GeomBuilder();
+  const cx = 2 * TILE, cz = 1 * TILE, topY = 4.4;
+  b.bar([cx - 2.2, 0, cz], [cx - 0.2, topY, cz], 0.2, 0.2, 0x3a6ad8, 1);
+  b.bar([cx + 2.2, 0, cz], [cx + 0.2, topY, cz], 0.2, 0.2, 0x3a6ad8, 1);
+  b.box(cx - 2.3, 0.15, cz, 0.6, 0.3, 1.6, 0xd8d0c0, 1);
+  b.box(cx + 2.3, 0.15, cz, 0.6, 0.3, 1.6, 0xd8d0c0, 1);
+  g.add(meshOf(b, mat));
+  const arm = new THREE.Group();
+  arm.position.set(cx, topY, cz);
+  const ab = new GeomBuilder();
+  ab.post(0, -3.4, 0, 0.14, 3.4, 0xe8b830, 1);                     // 摆臂
+  arm.add(meshOf(ab, mat));
+  const disc = new THREE.Group();
+  disc.position.set(0, -3.6, 0);
+  const dbb = new GeomBuilder();
+  dbb.frustum(0, 0, 0, 1.15, 1.05, 0.3, 0xd84a3a, 1, 10);         // 圆盘座舱
+  disc.add(meshOf(dbb, mat));
+  arm.add(disc);
+  g.add(arm);
+  let t = 0;
+  return {
+    group: g,
+    update: (dt, rd) => {
+      t += dt * rd.animSpeed;
+      const amp = Math.min(1.25, 0.2 + rd.animSpeed * 1.05);
+      arm.rotation.z = Math.sin(t * 1.5) * amp;
+      disc.rotation.y += dt * rd.animSpeed * 3;
+    },
+    // 游客落点:盘沿一圈,随摆臂摆动(绕 z 轴)
+    riderPos(i, out) {
+      const th = arm.rotation.z;
+      const a = i / 8 * Math.PI * 2 + disc.rotation.y;
+      const lx = Math.cos(a) * 0.85, ly = -3.6, lz = Math.sin(a) * 0.85;
+      const ca = Math.cos(th), sa = Math.sin(th);
+      out.x = cx + lx * ca - ly * sa; out.y = topY + lx * sa + ly * ca + 0.25; out.z = cz + lz;
+    },
+  };
+}
+
+// 太空梭:双柱 + 整排翻转座舱
+function buildTopspin(ride, mat) {
+  const g = new THREE.Group();
+  const b = new GeomBuilder();
+  const cx = 2 * TILE, cz = 1 * TILE, topY = 3.9;
+  for (const sx of [-2.4, 2.4]) {
+    b.post(cx + sx, 0, cz, 0.16, topY, 0x48b050, 1);
+    b.box(cx + sx, 0.15, cz, 0.5, 0.3, 1.4, 0xd8d0c0, 1);
+  }
+  b.bar([cx - 2.4, topY, cz], [cx + 2.4, topY, cz], 0.16, 0.16, 0x48b050, 1);
+  g.add(meshOf(b, mat));
+  const row = new THREE.Group();
+  row.position.set(cx, topY, cz);
+  const rb = new GeomBuilder();
+  rb.box(0, -0.9, 0, 2.6, 0.5, 0.6, 0xc86ad8, 1);                  // 横排座舱
+  rb.box(0, -0.55, -0.28, 2.6, 0.5, 0.08, 0x8a4ad8, 1);            // 靠背
+  row.add(meshOf(rb, mat));
+  g.add(row);
+  let t = 0;
+  return {
+    group: g,
+    update: (dt, rd) => {
+      t += dt * rd.animSpeed;
+      row.rotation.x = Math.sin(t * 0.9) * Math.PI * Math.min(1, rd.animSpeed + 0.2);   // 整排翻转
+    },
+    // 游客落点:横排座位,随排翻转(绕 x 轴)
+    riderPos(i, out) {
+      const th = row.rotation.x;
+      const lx = -1.05 + (i % 8) * 0.3, ly = -0.7;
+      const ca = Math.cos(th), sa = Math.sin(th);
+      out.x = cx + lx; out.y = topY + ly * ca; out.z = cz + ly * sa;
+    },
+  };
+}
+
+// 入口/出口小屋(几何以原点为中心,由 mesh.position 放到局部 tile 坐标)
+function buildHut(mat, colorHex) {  const b = new GeomBuilder();
   b.box(0, 0.6, 0, 1.3, 1.2, 1.1, 0xc8b890, 1);
   b.frustum(0, 1.2, 0, 1.05, 0.1, 0.5, colorHex, 1, 4);
   b.box(0, 0.5, 0.56, 0.6, 0.8, 0.04, 0x3a3026, 1);  // 门
@@ -508,8 +761,12 @@ export class Rides {
     // 移动小屋 mesh
     const hut = ride.huts?.[which];
     if (hut) {
-      const a = { x: ride.x, y: ride.y };
-      hut.position.set((chk.inner[0] - a.x) * TILE + TILE / 2, 0, (chk.inner[1] - a.y) * TILE + TILE / 2);
+      if (ride.custom) {
+        hut.position.set(World.tileToWorldX(chk.inner[0]) + TILE / 2, ride.baseY, World.tileToWorldZ(chk.inner[1]) + TILE / 2);
+      } else {
+        const a = { x: ride.x, y: ride.y };
+        hut.position.set((chk.inner[0] - a.x) * TILE + TILE / 2, 0, (chk.inner[1] - a.y) * TILE + TILE / 2);
+      }
     }
     this.computeQueueCells(ride);
     this._repositionQueue(ride);
@@ -641,6 +898,117 @@ export class Rides {
     return { ok: true, cost: def.cost, ride, needGate: !!v.needGate };
   }
 
+  // ---------- 定制过山车(轨道编辑器) ----------
+  canBeginCustom(x, y) {
+    const w = this.game.world;
+    if (this.list.some(r => r.custom && !r.complete)) return { ok: false, reason: '先完成或拆除在建的过山车' };
+    if (!w.in(x, y)) return { ok: false, reason: '超出地图' };
+    if (!w.ownedAt(x, y)) return { ok: false, reason: '不在公园范围内' };
+    if (!w.isClear(x, y)) return { ok: false, reason: '位置被占用' };
+    if (w.minH(x, y) < WATER_H) return { ok: false, reason: '水下不能建造' };
+    return { ok: true };
+  }
+  beginCustom(x, y, dir = 1, forcedId = null) {
+    const chk = this.canBeginCustom(x, y);
+    if (!chk.ok) return chk;
+    const def = DEF_BY_ID.mycoaster;
+    const w = this.game.world;
+    const ride = {
+      id: forcedId ?? this.nextId++, def, x, y,
+      custom: true, complete: false,
+      pieces: [{ t: 'station', x, y, h: 0, dir }],
+      baseY: w.maxH(x, y) * H_UNIT,
+      status: 'closed', price: def.basePrice,
+      guestsServed: 0, incomeTotal: 0,
+      queue: [], riders: [], animSpeed: 0, cycleT: 0, phase: 'idle',
+      entrance: { inner: [x, y], outer: [x - 1, y], dir: 2 },
+      exit: { inner: [x, y], outer: [x + 1, y], dir: 0 },
+      needGate: true,
+      reliability: 94 + (x * 7 + y * 13) % 5,
+      broken: false, breakdownT: 0,
+      excitement: def.excitement, intensity: def.intensity, nausea: def.nausea,
+    };
+    if (forcedId != null) this.nextId = Math.max(this.nextId, forcedId + 1);
+    w.rideTile[w.idx(x, y)] = ride.id;
+    this._buildVisuals(ride);
+    this.list.push(ride);
+    this.computeQueueCells(ride);
+    return { ok: true, cost: PIECE_BY_ID.station.cost, ride };
+  }
+  // 轨道头 = 最后一段的出口(下一段的入口 tile/方向/高度)
+  headOf(ride) { return exitOf(ride.pieces[ride.pieces.length - 1]); }
+  canAddPiece(ride, type) {
+    const w = this.game.world;
+    const def = PIECE_BY_ID[type];
+    if (!def) return { ok: false, reason: '未知轨道件' };
+    if (!ride.custom || ride.complete) return { ok: false, reason: '已建成,不能再加段' };
+    if (ride.pieces.length >= MAX_PIECES) return { ok: false, reason: '轨道已达长度上限' };
+    const e = this.headOf(ride);
+    const h = e.h;                                   // 新段入口高度
+    const dH = def.dH || 0;
+    const hi = Math.max(h, h + dH), lo = Math.min(h, h + dH);
+    if (hi > MAX_LEVEL) return { ok: false, reason: '已达最高高度' };
+    if (lo < 0) return { ok: false, reason: '不能低于站台层' };
+    const x = e.x, y = e.y;
+    if (!w.in(x, y)) return { ok: false, reason: '超出地图' };
+    if (!w.ownedAt(x, y)) return { ok: false, reason: '不在公园范围内' };
+    const trackLoY = ride.baseY + lo * H_UNIT;
+    if (trackLoY < w.maxH(x, y) * H_UNIT - 0.05) return { ok: false, reason: '轨道被地形阻挡' };
+    for (const pc of ride.pieces) {   // 自交:同 tile 需 2 层净空
+      if (pc.x === x && pc.y === y && Math.abs(pc.h - h) < 2) return { ok: false, reason: '与已有轨道冲突' };
+    }
+    const k = w.idx(x, y);
+    if (w.rideTile[k] !== -1) return { ok: false, reason: '位置被占用' };
+    if (w.obj[k] !== 0) return { ok: false, reason: '有景物阻挡' };
+    if (w.path[k] !== PATH.NONE) {
+      const pathTop = Math.max(...w.corners(x, y)) * H_UNIT + 0.05;
+      if (trackLoY < pathTop + 1.7) return { ok: false, reason: '净空不足,不能跨越路径' };
+    }
+    return { ok: true, x, y, h, dir: e.dir };
+  }
+  addPiece(rideId, type) {
+    const ride = this.findRide(rideId);
+    if (!ride || !ride.custom) return { ok: false, reason: '设施不存在' };
+    const chk = this.canAddPiece(ride, type);
+    if (!chk.ok) return chk;
+    ride.pieces.push({ t: type, x: chk.x, y: chk.y, h: chk.h, dir: chk.dir });
+    const w = this.game.world;
+    if (w.rideTile[w.idx(chk.x, chk.y)] === -1) w.rideTile[w.idx(chk.x, chk.y)] = ride.id;
+    ride.api?.rebuild?.();
+    return { ok: true, cost: PIECE_BY_ID[type].cost };
+  }
+  undoPiece(rideId) {
+    const ride = this.findRide(rideId);
+    if (!ride || !ride.custom) return { ok: false, reason: '设施不存在' };
+    if (ride.complete) return { ok: false, reason: '已建成,不能撤销' };
+    if (ride.pieces.length <= 1) return { ok: false, reason: '只剩站台了,放弃请用拆除' };
+    const pc = ride.pieces.pop();
+    const w = this.game.world;
+    if (w.rideTile[w.idx(pc.x, pc.y)] === ride.id) w.rideTile[w.idx(pc.x, pc.y)] = -1;
+    ride.api?.rebuild?.();
+    return { ok: true, cost: -Math.round(PIECE_BY_ID[pc.t].cost * 0.55) };
+  }
+  finishCustom(rideId) {
+    const ride = this.findRide(rideId);
+    if (!ride || !ride.custom) return { ok: false, reason: '设施不存在' };
+    if (ride.complete) return { ok: false, reason: '已建成' };
+    if (!canFinish(ride)) return { ok: false, reason: '轨道还没接回站台,无法闭环' };
+    ride.complete = true;
+    // 由轨道形态估算属性:落差/弯数/长度
+    let drops = 0, turns = 0;
+    for (const pc of ride.pieces) {
+      const d = PIECE_BY_ID[pc.t].dH || 0;
+      if (d < 0) drops += -d;
+      if (PIECE_BY_ID[pc.t].turn) turns++;
+    }
+    ride.excitement = Math.min(90, 42 + drops * 5 + turns * 2 + Math.floor(ride.pieces.length / 8));
+    ride.intensity = Math.min(92, 45 + drops * 6 + Math.floor(ride.pieces.length / 10));
+    ride.nausea = Math.min(70, 30 + turns * 2);
+    ride.api?.rebuild?.();
+    this.computeQueueCells(ride);
+    return { ok: true, cost: 0 };
+  }
+
   // 构建 ride 的网格/动画(放置与读档共用)
   _buildVisuals(ride) {
     const w = this.game.world;
@@ -650,8 +1018,21 @@ export class Rides {
     group.position.set(World.tileToWorldX(a.x), ride.baseY, World.tileToWorldZ(a.y));
     let api;
     if (def.kind === 'coaster') {
-      api = buildCoaster(this.game, ride);
-      group.position.set(0, 0, 0);   // 过山车构建用绝对世界坐标
+      if (ride.custom) {
+        api = buildCustomCoaster(this.game, ride);
+        group.position.set(0, 0, 0);   // 采样/小屋均用绝对世界坐标
+        ride.huts = {};
+        for (const [which, col] of [['entrance', 0x3a7ad8], ['exit', 0x8a5a30]]) {
+          const hut = buildHut(this.mat, col);
+          const gpos = ride[which];
+          hut.position.set(World.tileToWorldX(gpos.inner[0]) + TILE / 2, ride.baseY, World.tileToWorldZ(gpos.inner[1]) + TILE / 2);
+          group.add(hut);
+          ride.huts[which] = hut;
+        }
+      } else {
+        api = buildCoaster(this.game, ride);
+        group.position.set(0, 0, 0);   // 过山车构建用绝对世界坐标
+      }
     } else {
       api = def.build(ride, this.mat);
       // 入口/出口小屋(可移动,记录引用)
@@ -675,19 +1056,39 @@ export class Rides {
     const def = DEF_BY_ID[s.defId];
     if (!def) return;
     const w = this.game.world;
-    // 找入口/出口:重新扫描(与放置时同算法 → 确定性一致)
-    const spots = this._findGates(def, s.x, s.y) || fallbackGates(def, s.x, s.y);
-    const ride = {
-      id: s.id, def, x: s.x, y: s.y,
-      baseY: Math.max(0, ...this._footprintHeights(def, s.x, s.y)) * H_UNIT,
-      status: s.status || 'closed',
-      price: s.price ?? def.basePrice,
-      guestsServed: s.guestsServed || 0, incomeTotal: s.incomeTotal || 0,
-      reliability: s.reliability ?? 95, broken: !!s.broken, breakdownT: 0,
-      queue: [], riders: [], animSpeed: 0, cycleT: 0, phase: 'idle',
-      entrance: spots.entrance, exit: spots.exit,
-      excitement: def.excitement, intensity: def.intensity, nausea: def.nausea,
-    };
+    let ride;
+    if (s.custom) {   // 定制过山车:轨道件与出入口来自存档
+      ride = {
+        id: s.id, def, x: s.x, y: s.y,
+        custom: true, complete: !!s.complete,
+        pieces: (s.pieces || []).map(([t, x, y, h, dir]) => ({ t, x, y, h, dir })),
+        baseY: w.maxH(s.x, s.y) * H_UNIT,
+        status: s.status || 'closed',
+        price: s.price ?? def.basePrice,
+        guestsServed: s.guestsServed || 0, incomeTotal: s.incomeTotal || 0,
+        reliability: s.reliability ?? 95, broken: !!s.broken, breakdownT: 0,
+        queue: [], riders: [], animSpeed: 0, cycleT: 0, phase: 'idle',
+        entrance: s.entrance || { inner: [s.x, s.y], outer: [s.x - 1, s.y], dir: 2 },
+        exit: s.exit || { inner: [s.x, s.y], outer: [s.x + 1, s.y], dir: 0 },
+        needGate: true,
+        excitement: s.excitement ?? def.excitement, intensity: s.intensity ?? def.intensity, nausea: s.nausea ?? def.nausea,
+      };
+      if (!ride.pieces.length) ride.pieces.push({ t: 'station', x: s.x, y: s.y, h: 0, dir: 1 });
+    } else {
+      // 找入口/出口:重新扫描(与放置时同算法 → 确定性一致)
+      const spots = this._findGates(def, s.x, s.y) || fallbackGates(def, s.x, s.y);
+      ride = {
+        id: s.id, def, x: s.x, y: s.y,
+        baseY: Math.max(0, ...this._footprintHeights(def, s.x, s.y)) * H_UNIT,
+        status: s.status || 'closed',
+        price: s.price ?? def.basePrice,
+        guestsServed: s.guestsServed || 0, incomeTotal: s.incomeTotal || 0,
+        reliability: s.reliability ?? 95, broken: !!s.broken, breakdownT: 0,
+        queue: [], riders: [], animSpeed: 0, cycleT: 0, phase: 'idle',
+        entrance: spots.entrance, exit: spots.exit,
+        excitement: def.excitement, intensity: def.intensity, nausea: def.nausea,
+      };
+    }
     this._buildVisuals(ride);
     this.list.push(ride);
     this.computeQueueCells(ride);
@@ -704,20 +1105,30 @@ export class Rides {
     if (this.game.peeps) {
       for (const p of [...ride.queue, ...ride.riders]) this.game.peeps.releaseFromQueue(p);
     }
-    for (let ty = 0; ty < ride.def.h; ty++)
-      for (let tx = 0; tx < ride.def.w; tx++)
-        if (w.rideTile[w.idx(ride.x + tx, ride.y + ty)] === rideId) w.rideTile[w.idx(ride.x + tx, ride.y + ty)] = -1;
+    let refund;
+    if (ride.custom) {   // 定制过山车:按轨道件清理与退款
+      for (const pc of ride.pieces) {
+        if (w.in(pc.x, pc.y) && w.rideTile[w.idx(pc.x, pc.y)] === rideId) w.rideTile[w.idx(pc.x, pc.y)] = -1;
+      }
+      refund = Math.round(ride.pieces.reduce((s, pc) => s + PIECE_BY_ID[pc.t].cost, 0) * 0.55);
+    } else {
+      for (let ty = 0; ty < ride.def.h; ty++)
+        for (let tx = 0; tx < ride.def.w; tx++)
+          if (w.rideTile[w.idx(ride.x + tx, ride.y + ty)] === rideId) w.rideTile[w.idx(ride.x + tx, ride.y + ty)] = -1;
+      refund = Math.round(ride.def.cost * 0.55);
+    }
     this.group.remove(ride.group);
     ride.group.traverse(o => { o.geometry?.dispose?.(); });
     this.list.splice(idx, 1);
     w.emit('path', ride.x, ride.y, ride.x + ride.def.w, ride.y + ride.def.h);
     this.game.ui?.closeRideWindow?.(rideId);
-    return { ok: true, cost: -Math.round(ride.def.cost * 0.55) };
+    return { ok: true, cost: -refund };
   }
 
   tilesOf(rideId) {
     const r = this.list.find(q => q.id === rideId);
     if (!r) return [];
+    if (r.custom) return [...new Map(r.pieces.map(pc => [pc.x + ',' + pc.y, [pc.x, pc.y]])).values()];
     const out = [];
     for (let ty = 0; ty < r.def.h; ty++)
       for (let tx = 0; tx < r.def.w; tx++) out.push([r.x + tx, r.y + ty]);
@@ -797,6 +1208,15 @@ export class Rides {
       const targetSpeed = (ride.status === 'closed' || ride.broken) ? 0 : 1;
       ride.animSpeed += (targetSpeed - ride.animSpeed) * Math.min(1, dt * 2);
       if (ride.animSpeed > 0.01 || ride.def.kind === 'coaster') ride.api.update(dt, ride);
+      // 高强度设施满载运转时游客尖叫(合成音效,节流 5s)
+      if (this.game.audio && (ride.def.intensity ?? 0) >= 40 && ride.animSpeed > 0.8 && ride.status === 'open' &&
+        (ride.riders.length || this.game.mp)) {
+        const now = this.game.time || 0;
+        if (now - (ride._screamAt ?? -9) > 5 && Math.random() < dt * 0.45) {
+          ride._screamAt = now;
+          this.game.audio.play('scream');
+        }
+      }
       if (this.game.mp) continue;
       // 可靠度衰变 + 故障判定(权威侧)
       if (ride.def.kind !== 'shop' && ride.status === 'open' && !ride.broken) {

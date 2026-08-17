@@ -65,6 +65,39 @@ export class Sfx {
     this._tone(ctx, { f: 1320, t: 0.05, type: 'sine', g: 0.07 });
     this._tone(ctx, { f: 1760, t: 0.1, type: 'sine', g: 0.07, at: 0.05 });
   }
+  // 人群尖叫:4 个去谐"人声"(锯齿 + 快颤音 + 共振峰带通),先扬后落
+  _scream(ctx) {
+    for (let v = 0; v < 4; v++) {
+      const t0 = ctx.currentTime + Math.random() * 0.09;
+      const dur = 0.45 + Math.random() * 0.35;
+      const f0 = 480 + Math.random() * 420;
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f0, t0);
+      o.frequency.linearRampToValueAtTime(f0 * (1.25 + Math.random() * 0.4), t0 + dur * 0.35);
+      o.frequency.linearRampToValueAtTime(f0 * 0.72, t0 + dur);
+      const lfo = ctx.createOscillator();          // 颤音
+      lfo.frequency.value = 20 + Math.random() * 12;
+      const lg = ctx.createGain();
+      lg.gain.value = f0 * 0.09;
+      lfo.connect(lg); lg.connect(o.frequency);
+      const bp = ctx.createBiquadFilter();          // 共振峰
+      bp.type = 'bandpass';
+      bp.frequency.value = 1000 + Math.random() * 500;
+      bp.Q.value = 1.1;
+      const ga = ctx.createGain();
+      ga.gain.setValueAtTime(0.0001, t0);
+      ga.gain.exponentialRampToValueAtTime(0.032, t0 + 0.06);
+      ga.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(bp); bp.connect(ga); ga.connect(ctx.destination);
+      o.start(t0); o.stop(t0 + dur + 0.05);
+      lfo.start(t0); lfo.stop(t0 + dur + 0.05);
+    }
+  }
+  // 轨道轰鸣:低通噪声短促
+  _rumble(ctx) { this._noise(ctx, { t: 0.5, g: 0.11, f: 150 }); }
+  // 提升坡链条咔嗒
+  _clack(ctx) { this._tone(ctx, { f: 1400, t: 0.02, type: 'square', g: 0.03 }); }
   _fanfare(ctx) { [523, 659, 784].forEach((f, i) => this._tone(ctx, { f, t: 0.09, type: 'triangle', g: 0.1, at: i * 0.07 })); }
   _win(ctx) { [523, 659, 784, 1046].forEach((f, i) => this._tone(ctx, { f, t: 0.13, type: 'triangle', g: 0.12, at: i * 0.1 })); }
   _lose(ctx) { [392, 330, 262].forEach((f, i) => this._tone(ctx, { f, t: 0.15, type: 'triangle', g: 0.1, at: i * 0.12 })); }

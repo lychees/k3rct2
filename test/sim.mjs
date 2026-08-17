@@ -12,7 +12,9 @@ import { Messages } from '../src/game/messages.js';
 import { Research, RESEARCH_QUEUE } from '../src/game/research.js';
 import { applyAction } from '../src/game/actions.js';
 import { SCENARIOS, applyScenario, unlockNext } from '../src/game/scenarios.js';
-import { PATH, TILE } from '../src/config.js';
+import { canFinish } from '../src/game/coasterEdit.js';
+import { Sfx } from '../src/core/audio.js';
+import { PATH, TILE, H_UNIT } from '../src/config.js';
 
 const SECONDS = Number(process.argv[2] || 180);
 
@@ -104,7 +106,8 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
 
 // 乘坐可见:全部带 riderPos 的设施都能给出有限落点
 {
-  const flatIds = ['carousel', 'ferris', 'twist', 'haunted', 'bumper', 'pirate', 'tower'];
+  const flatIds = ['carousel', 'ferris', 'twist', 'haunted', 'bumper', 'pirate', 'tower',
+    'slide', 'teacups', 'chairs', 'droptower', 'frisbee', 'topspin'];
   const mat2 = new THREE.MeshLambertMaterial({ vertexColors: true });
   for (const id of flatIds) {
     const def = DEF_BY_ID[id];
@@ -147,6 +150,60 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
   game.economy.checkGoal(game);
   assertT(game.economy.goal.won, '现金类关卡:游客+评分+现金均达标即判定通关');
   assertT(unlockNext('meadow').includes('已解锁'), '通关后解锁下一关提示');
+}
+
+// 定制过山车:扫描平地 → 逐段铺轨 → 闭环 → 测试模式跑一整圈
+{
+  const SEQ = ['lift', 'lift', 'right', 'flat', 'right', 'down', 'down', 'flat', 'right', 'flat', 'right'];
+  let anchor = null;
+  outer2: for (let ay = ey + 16; ay < ey + 55; ay++) for (let ax = ex - 24; ax < ex + 20; ax++) {
+    const h0 = game.world.maxH(ax, ay);
+    let okA = true;   // 3×5 范围(站台往南 1 格、往北 3 格)需要等高
+    for (let dy = -1; dy <= 3 && okA; dy++) for (let dx = 0; dx <= 2 && okA; dx++) {
+      if (game.world.maxH(ax + dx, ay + dy) !== h0 || game.world.minH(ax + dx, ay + dy) !== h0) okA = false;
+    }
+    if (!okA || !game.rides.canBeginCustom(ax, ay).ok) continue;
+    // 用假 ride 预演整圈
+    const fake = { pieces: [{ t: 'station', x: ax, y: ay, h: 0, dir: 1 }], baseY: h0 * H_UNIT, custom: true, complete: false };
+    let okAll = true;
+    for (const t of SEQ) {
+      const chk = game.rides.canAddPiece(fake, t);
+      if (!chk.ok) { okAll = false; break; }
+      fake.pieces.push({ t, x: chk.x, y: chk.y, h: chk.h, dir: chk.dir });
+    }
+    if (okAll) { anchor = [ax, ay]; break outer2; }
+  }
+  assertT(!!anchor, '定制过山车:找到可建站台位置');
+  if (anchor) {
+    const b = game.rides.beginCustom(anchor[0], anchor[1], 1);
+    assertT(b.ok, '定制过山车:放下站台');
+    const ride = b.ride;
+    let allOk = true;
+    for (const t of SEQ) {
+      const r = game.rides.addPiece(ride.id, t);
+      if (!r.ok) { allOk = false; console.error('段失败', t, r.reason); break; }
+    }
+    assertT(allOk, `定制过山车:逐段铺轨 ${SEQ.length} 段`);
+    assertT(canFinish(ride), '定制过山车:轨道接回站台可闭环');
+    const f = game.rides.finishCustom(ride.id);
+    assertT(f.ok && ride.complete && ride.excitement > 50, `定制过山车:闭环建成(兴奋${ride.excitement})`);
+    ride.status = 'test';
+    let sawRun = false, laps = 0;
+    for (let t = 0; t < 300 && laps < 1; t += 1 / 15) {
+      ride.api.update(1 / 15);
+      if (ride.api.state.mode === 'run') sawRun = true;
+      if (sawRun && ride.api.state.mode === 'load') laps++;
+    }
+    assertT(laps >= 1, '定制过山车:列车测试模式跑完一整圈');
+  }
+}
+// 音效:无 window 环境下所有预设安全空转(不抛异常)
+{
+  const sfx = new Sfx();
+  let safe = true;
+  try { for (const n of ['click', 'place', 'remove', 'error', 'cash', 'fanfare', 'win', 'lose', 'scream', 'rumble', 'clack']) sfx.play(n); }
+  catch { safe = false; }
+  assertT(safe, '音效模块无头环境安全空转');
 }
 console.log(errs ? `\nSIM FAIL (${errs})` : '\nSIM OK');
 process.exit(errs ? 1 : 0);

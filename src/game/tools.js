@@ -119,7 +119,11 @@ export class Tools {
       this._do({ type: 'scenery', id: t.id, x: p.x, y: p.y }, e, drag);
     } else if (t.type === 'ride' || t.type === 'shop') {
       if (drag) return;  // 设施不支持拖动
-      this._do({ type: 'ridePlace', id: t.id, x: p.x, y: p.y }, e, false, true);
+      if (t.id === 'mycoaster') {
+        this._do({ type: 'coasterBegin', id: t.id, x: p.x, y: p.y, dir: g.ui?.panels?.coasterDir ?? 1 }, e, false, true);
+      } else {
+        this._do({ type: 'ridePlace', id: t.id, x: p.x, y: p.y }, e, false, true);
+      }
     } else if (t.type === 'gate') {
       this._do({ type: 'rideGate', rideId: t.rideId, which: t.which, x: p.x, y: p.y }, e, false);
     } else if (t.type === 'remove') {
@@ -150,7 +154,11 @@ export class Tools {
     if (!drag) g.audio?.play(r.cost < 0 ? 'remove' : 'place');
     if (r.cost > 0 && !drag) this._flash('-' + g.economy.fmt(r.cost), e || this.mouse);
     else if (r.cost < 0 && !drag) this._flash('+' + g.economy.fmt(-r.cost), e || this.mouse);
-    if (a.type === 'ridePlace' || a.type === 'rideGate') { this.clearTool(); this._clearCursor(); g.ui?.refreshToolbar?.(); }
+    if (a.type === 'ridePlace' || a.type === 'rideGate' || a.type === 'coasterBegin') { this.clearTool(); this._clearCursor(); g.ui?.refreshToolbar?.(); }
+    if (a.type === 'coasterBegin') {   // 放好站台 → 打开编辑器继续铺轨(已开则不动,toggle 会误关)
+      const p = g.ui?.panels;
+      if (p && !p.wm.has('panel-coaster')) p.open('coaster');
+    }
   }
 
   _applyLand(p, e, drag) {
@@ -200,13 +208,21 @@ export class Tools {
       const chk = g.scenery.canPlace(t.id, p.x, p.y);
       valid = chk.ok; if (!valid) text = chk.reason;
     } else if (t.type === 'ride' || t.type === 'shop') {
-      const chk = g.rides.validate(t.id, p.x, p.y);
-      valid = chk.ok;
-      if (valid && g.research && !g.research.unlocked(t.id)) { valid = false; text = '尚未研发该设施'; }
-      tiles = chk.tiles || [];
-      if (!valid && !text) text = chk.reason || '';
-      if (valid && chk.needGate) text = '可放置;放好后用设施窗口"设入口/设出口"接路径';
-      this._updateGhost(t.id, p, valid);
+      if (t.id === 'mycoaster') {   // 定制过山车:单格光标,校验站台落点
+        tiles = [[p.x, p.y]];
+        const chk2 = g.rides.canBeginCustom(p.x, p.y);
+        valid = chk2.ok;
+        text = valid ? `点击放置站台(朝向:${['东', '北', '西', '南'][g.ui?.panels?.coasterDir ?? 1]},编辑器可改)` : chk2.reason;
+        if (valid && g.research && !g.research.unlocked('woodie')) { valid = false; text = '尚未研发过山车'; }
+      } else {
+        const chk = g.rides.validate(t.id, p.x, p.y);
+        valid = chk.ok;
+        if (valid && g.research && !g.research.unlocked(t.id)) { valid = false; text = '尚未研发该设施'; }
+        tiles = chk.tiles || [];
+        if (!valid && !text) text = chk.reason || '';
+        if (valid && chk.needGate) text = '可放置;放好后用设施窗口"设入口/设出口"接路径';
+        this._updateGhost(t.id, p, valid);
+      }
     } else if (t.type === 'gate') {
       const ride = g.rides.findRide(t.rideId);
       if (ride) {

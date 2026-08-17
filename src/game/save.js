@@ -67,6 +67,12 @@ export class Saves {
         guestsServed: r.guestsServed, incomeTotal: r.incomeTotal,
         reliability: r.reliability, broken: r.broken,
         coaster: r.api?.serialize ? r.api.serialize() : null,
+        ...(r.custom ? {
+          custom: 1, complete: r.complete ? 1 : 0,
+          pieces: r.pieces.map(p => [p.t, p.x, p.y, p.h, p.dir]),
+          entrance: r.entrance, exit: r.exit,
+          excitement: r.excitement, intensity: r.intensity, nausea: r.nausea,
+        } : {}),
       })),
       rideNextId: g.rides.nextId,
       research: g.research ? g.research.serialize() : null,

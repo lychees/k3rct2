@@ -4,6 +4,7 @@ import { SCENERY_TYPES } from '../game/scenery.js';
 import { RIDE_DEFS, DEF_BY_ID } from '../game/rides.js';
 import { RESEARCH_LEVELS, RESEARCH_QUEUE } from '../game/research.js';
 import { SCENARIOS, maxUnlocked } from '../game/scenarios.js';
+import { COASTER_PIECES, canFinish } from '../game/coasterEdit.js';
 import { STAFF_ROLES } from '../game/staff.js';
 
 const PANEL_POS = {
@@ -11,7 +12,7 @@ const PANEL_POS = {
   peeps: [window.innerWidth - 300, 60], finance: [window.innerWidth - 340, 80],
   park: [window.innerWidth - 320, 100], save: [90, 90], mp: [window.innerWidth - 320, 130],
   research: [230, 120], staff: [window.innerWidth - 360, 60], map: [60, 50],
-  cheat: [window.innerWidth - 360, 140], levels: [270, 140],
+  cheat: [window.innerWidth - 360, 140], levels: [270, 140], coaster: [300, 100],
 };
 
 export class Panels {
@@ -37,7 +38,7 @@ export class Panels {
     return {
       land: '整地', scenery: '景观', path: '路径', rides: '游乐设施', shops: '商店',
       peeps: '游客', finance: '财务', park: '公园信息', save: '存档', mp: '联机', research: '研发',
-      staff: '员工', map: '园区地图', cheat: '开发者控制台', levels: '关卡',
+      staff: '员工', map: '园区地图', cheat: '开发者控制台', levels: '关卡', coaster: '过山车编辑器',
     }[name] || name;
   }
 
@@ -147,13 +148,16 @@ export class Panels {
     const rebuild = () => {
       list.innerHTML = '';
       for (const d of RIDE_DEFS.filter(d => d.cat === cat)) {
-        const locked = g.research && !g.research.unlocked(d.id);
+        const locked = g.research && (!g.research.unlocked(d.id) || (d.id === 'mycoaster' && !g.research.unlocked('woodie')));
         const item = document.createElement('div');
         item.className = 'rct-item';
         if (locked) item.style.opacity = '0.45';
-        item.innerHTML = `<span>${d.name}<div class="sub">${d.w}×${d.h} · ${d.desc}</div></span><span class="price">${locked ? '未研发' : '$' + d.cost}</span>`;
+        item.innerHTML = `<span>${d.name}<div class="sub">${d.w}×${d.h} · ${d.desc}</div></span><span class="price">${locked ? '未研发' : (d.custom ? '编辑器' : '$' + d.cost)}</span>`;
         if (!locked) {
-          item.addEventListener('click', () => this._selectTool({ type: cat === 'ride' ? 'ride' : 'shop', id: d.id }, item, list));
+          item.addEventListener('click', () => {
+            if (d.id === 'mycoaster') this.open('coaster');   // 先开编辑器(open 内部会 clearTool)
+            this._selectTool({ type: cat === 'ride' ? 'ride' : 'shop', id: d.id }, item, list);   // 再选工具,保证幽灵可用
+          });
         } else {
           item.title = '通过研发解锁';
           item.style.cursor = 'default';
@@ -503,6 +507,87 @@ export class Panels {
     };
     render();
     w.refresh = render;
+  }
+
+  // ---------- 过山车编辑器 ----------
+  build_coaster(el, w) {
+    const g = this.game;
+    if (this.coasterDir === undefined) this.coasterDir = 1;
+    const draft = () => g.rides.list.find(r => r.custom && !r.complete);
+    const DIRNM = ['东', '北', '西', '南'];
+    const status = document.createElement('div');
+    status.className = 'hint';
+    el.appendChild(status);
+    // 站台朝向(未开工时显示)
+    const dirRow = document.createElement('div');
+    dirRow.className = 'rct-row';
+    DIRNM.forEach((nm, i) => {
+      const b = this._btn(nm, () => { this.coasterDir = i; w.refresh(); }, 'small');
+      b.dataset.dir = i;
+      dirRow.appendChild(b);
+    });
+    el.appendChild(dirRow);
+    // 轨道件按钮(两行)
+    const pieceBox = document.createElement('div');
+    el.appendChild(pieceBox);
+    const defs = COASTER_PIECES.filter(p => p.id !== 'station');
+    [defs.slice(0, 4), defs.slice(4)].forEach(rowDefs => {
+      const row = document.createElement('div');
+      row.className = 'rct-row';
+      for (const p of rowDefs) {
+        const b = this._btn(`${p.name} $${p.cost}`, () => {
+          const d = draft();
+          if (!d) return;
+          const r = g.dispatchAction({ type: 'coasterPiece', rideId: d.id, piece: p.id });
+          if (!r?.ok && r?.reason) msg.textContent = r.reason;
+          w.refresh();
+        }, 'small');
+        b.title = p.id;
+        row.appendChild(b);
+      }
+      pieceBox.appendChild(row);
+    });
+    const msg = document.createElement('div');
+    msg.className = 'hint';
+    msg.style.color = '#ffb0a0';
+    el.appendChild(msg);
+    const opRow = document.createElement('div');
+    opRow.className = 'rct-row';
+    const undoBtn = this._btn('撤销上一段', () => {
+      const d = draft();
+      if (d) { const r = g.dispatchAction({ type: 'coasterUndo', rideId: d.id }); if (!r?.ok) msg.textContent = r?.reason || ''; w.refresh(); }
+    }, 'small');
+    const finBtn = this._btn('完成闭环', () => {
+      const d = draft();
+      if (d) { const r = g.dispatchAction({ type: 'coasterFinish', rideId: d.id }); if (!r?.ok) msg.textContent = r?.reason || ''; w.refresh(); }
+    }, 'small');
+    const delBtn = this._btn('放弃(拆除)', () => {
+      const d = draft();
+      if (d && confirm('拆除在建的过山车?返还 55% 造价')) { g.dispatchAction({ type: 'rideRemove', rideId: d.id }); w.refresh(); }
+    }, 'small');
+    opRow.append(undoBtn, finBtn, delBtn);
+    el.appendChild(opRow);
+    w.refresh = () => {
+      const d = draft();
+      dirRow.querySelectorAll('.rct-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.dir) === this.coasterDir));
+      dirRow.style.display = d ? 'none' : '';
+      pieceBox.style.display = d ? '' : 'none';
+      opRow.style.display = d ? '' : 'none';
+      if (!d) {
+        const researched = !g.research || g.research.unlocked('woodie');
+        status.innerHTML = researched
+          ? `1. 选好站台朝向(当前:${DIRNM[this.coasterDir]})<br>2. 在地图上点击放站台($300)<br>3. 逐段铺轨,接回站台即闭环`
+          : '需先在研发中解锁「木制过山车」';
+        msg.textContent = '';
+        return;
+      }
+      const head = g.rides.headOf(d);
+      const fin = canFinish(d);
+      status.innerHTML = `段数 ${d.pieces.length} · 高度 ${head.h} · 朝向 ${DIRNM[head.dir]}` +
+        (fin ? ' · <b class="pos">可闭环!</b>' : ' · 未闭环');
+      finBtn.style.opacity = fin ? '1' : '0.45';
+    };
+    w.refresh();
   }
 
   // ---------- 存档 ----------

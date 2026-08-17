@@ -135,12 +135,25 @@ export function buildCoaster(game, ride) {
     } else {
       const p = curve.getPointAt((state.s / LEN) % 1);
       const inLift = state.s > S_LIFT_START && state.s < S_LIFT_END;
-      if (inLift) state.v = 1.9;
-      else {
+      if (inLift) {
+        state.v = 1.9;
+        const now = game.time || 0;   // 链条咔嗒声
+        if (game.audio && now - (ride._clackAt ?? -9) > 0.38) { ride._clackAt = now; game.audio.play('clack'); }
+      } else {
         const target = Math.sqrt(Math.max(0, 2 * G * (hTop - p.y)));
         state.v += (Math.max(1.15, target) - state.v) * Math.min(1, dt * 5);
       }
       state.s += state.v * dt;
+      // 俯冲尖叫:高速 + 前方明显下降(节流 4s)
+      if (game.audio && state.v > 5) {
+        const q2 = curve.getPointAt(((state.s + 2) / LEN) % 1);
+        const now = game.time || 0;
+        if (q2.y - p.y < -0.5 && now - (ride._screamAt ?? -9) > 4) {
+          ride._screamAt = now;
+          game.audio.play('scream');
+          game.audio.play('rumble');
+        }
+      }
       const sMod = state.s % LEN;
       // 第一次越过站台中线 → 回站卸客
       if (state.s >= LEN + LEN * 0.011 && !state.lapDone) state.lapDone = true;
