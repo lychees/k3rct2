@@ -13,6 +13,7 @@ export class Peeps {
     this.game = game;
     this.list = [];
     this.nextId = 1;
+    this.nextGroupId = 1;   // 家庭组编号
     this.spawnTimer = 3;
     this.gateMap = new Map();   // "x,y" → ride(入口外邻格 → ride)
     this.renderer = game.headless ? null : new PeepRenderer(game);
@@ -35,8 +36,22 @@ export class Peeps {
     const spawnTile = w.entrancePath[0];
     if (!spawnTile) return;
     const fee = g.economy.entranceFee;
-    const cash = 40 + rand() * 55;
-    if (fee > cash) { g.messages?.add(`一位游客嫌门票太贵(${g.economy.fmt(fee)}),转身走了`); return; }
+    const cash0 = 40 + rand() * 55;
+    if (fee > cash0) { g.messages?.add(`一批游客嫌门票太贵(${g.economy.fmt(fee)}),转身走了`); return; }
+    // 家庭组:1~5 人一批入园(成人 1~2 人 + 儿童若干),同组跟随领队
+    const roll = rand();
+    const size = roll < 0.3 ? 1 : roll < 0.55 ? 2 : roll < 0.75 ? 3 : roll < 0.9 ? 4 : 5;
+    const kids = size <= 1 ? 0 : size <= 3 ? 1 : 2;
+    const gid = size > 1 ? this.nextGroupId++ : 0;
+    for (let m = 0; m < size; m++) {
+      this._spawnOne(gid, m === 0, m >= size - kids);
+      if (this.list.length >= this.cap) break;
+    }
+  }
+
+  _spawnOne(gid, isLeader, kid) {
+    const w = this.game.world;
+    const cash = kid ? 15 + rand() * 20 : 40 + rand() * 55;
     const peep = {
       id: this.nextId++,
       x: 0, z: 0, tile: null, prev: null,
@@ -55,15 +70,15 @@ export class Peeps {
       thinkT: rand() * 2,
       queueRide: null, queueIndex: 0,
       hidden: false,
+      groupId: gid, isLeader, kid,
+      scale: kid ? 0.72 : 1,                         // 儿童个子小
+      thrill: kid ? 0.1 + rand() * 0.35 : rand(),    // 刺激偏好(儿童偏低)
     };
     peep.shirt = SHIRT_COLS[peep.shirtIdx];
     peep.skin = SKIN_COLS[peep.skinIdx];
     peep.pants = PANTS_COLS[peep.pantsIdx];
     peep.balloonCol = SHIRT_COLS[peep.balloonIdx];
     this.list.push(peep);
-    // 规划入园路线:沿 entrancePath 走进来
-    peep.route = w.entrancePath.slice(0).reverse().map(t => [t[0], t[1]]).reverse();
-    // 实际顺序:entrancePath 从外到内(push 顺序 y0-2 → y0+6),直接用它
     peep.route = w.entrancePath.filter(t => w.path[w.idx(t[0], t[1])] !== PATH.NONE);
     peep.routeIdx = 0;
     const [sx, sy] = peep.route[0];
@@ -191,6 +206,18 @@ export class Peeps {
         if (p.prev) { p.targetTile = p.prev; return; }
         return;
       }
+      // 家庭组:非领队成员偏向选择离领队近的方向(拉开 10 格以上就各走各的)
+      if (opts.length > 1 && p.groupId && !p.isLeader) {
+        const L = this.list.find(q => q.groupId === p.groupId && q.isLeader && q.state !== 'gone');
+        if (L && L.tile && Math.abs(L.tile[0] - cx) + Math.abs(L.tile[1] - cy) <= 10 && rand() < 0.7) {
+          let best = opts[0], bestD = 1e9;
+          for (const o of opts) {
+            const d = Math.abs(o[0] - L.tile[0]) + Math.abs(o[1] - L.tile[1]);
+            if (d < bestD) { bestD = d; best = o; }
+          }
+          p.targetTile = best;
+        }
+      }
       // 想上厕所/吃喝/没钱的判断 → 找店
       p.targetTile = p.targetTile || opts[ridx(opts.length)];
       p.thinkT -= 1;
@@ -301,7 +328,9 @@ export class Peeps {
     }
     // 效果:开心/晕/渴/饿/票价值不值
     const ex = ride.excitement / 100, iv = ride.intensity / 100, na = ride.nausea / 100;
-    peep.happiness = Math.min(1, peep.happiness + ex * 0.28 - na * 0.06);
+    // 偏好匹配:合口味的设施开心加成更高
+    const match = 0.6 + (1 - Math.min(1, Math.abs((ride.intensity ?? 50) / 100 - (peep.thrill ?? 0.5)) * 1.6)) * 0.8;
+    peep.happiness = Math.min(1, peep.happiness + ex * 0.28 * match - na * 0.06);
     peep.energy = Math.max(0, peep.energy - iv * 0.12);
     peep.nausea = Math.min(1, peep.nausea + na * 0.5);
     peep.hunger = Math.min(1, peep.hunger + 0.1);

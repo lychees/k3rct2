@@ -286,7 +286,7 @@ export class SimHost {
       if (p.state === 'gone') continue;
       peeps.push([
         p.id, Math.round(p.x * 100), Math.round(p.z * 100),
-        (p.hidden ? 1 : 0) | (p.hasSouvenir ? 2 : 0) | (p.hasUmbrella ? 4 : 0),
+        (p.hidden ? 1 : 0) | (p.hasSouvenir ? 2 : 0) | (p.hasUmbrella ? 4 : 0) | (p.kid ? 8 : 0),
         p.shirtIdx ?? 0, p.skinIdx ?? 0, p.pantsIdx ?? 0, p.balloonIdx ?? 0,
       ]);
     }

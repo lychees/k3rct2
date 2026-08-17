@@ -1276,6 +1276,12 @@ export class Rides {
         default: return false;
       }
     }
+    // 偏好:儿童不玩高强度;成人按"刺激偏好 × 设施强度"匹配,且对同一设施决定固定(不在门口反复横跳)
+    const inten = ride.intensity ?? ride.def.intensity ?? 50;
+    if (peep.kid && inten > 55) return false;
+    const match = 1 - Math.min(1, Math.abs(inten / 100 - (peep.thrill ?? 0.5)) * 1.6);
+    const h = ((peep.id * 31 + ride.id * 17) % 100) / 100;
+    if (h > 0.25 + match * 0.75) return false;
     return peep.cash >= ride.price && ride.queue.length < ride.queueCells.length + 8 && peep.energy > 0.15;
   }
   joinQueue(peep, ride) {

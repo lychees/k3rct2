@@ -31,6 +31,7 @@ export class RemotePeeps {
       r.hidden = (flags & 1) !== 0;
       r.hasSouvenir = (flags & 2) !== 0;
       r.hasUmbrella = (flags & 4) !== 0;
+      r.scale = (flags & 8) !== 0 ? 0.72 : 1;   // 儿童体型
     }
     for (const id of [...this.map.keys()]) if (!seen.has(id)) this.map.delete(id);
   }

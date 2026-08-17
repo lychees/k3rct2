@@ -45,6 +45,7 @@ export function openPeepWindow(game, wm, kind, id) {
           const st = GUEST_STATES[rec.state] || rec.state;
           d.innerHTML = `
             <div>状态:${st}${ride ? `「${ride.def.name}」` : ''}${rec.hasSouvenir ? ' · 有纪念品' : ''}${rec.hasUmbrella ? ' · 带伞' : ''}</div>
+            <div class="hint">${rec.kid ? '儿童' : '成人'} · 刺激偏好 ${Math.round((rec.thrill ?? 0.5) * 100)}%${rec.groupId ? ' · 家庭组 #' + rec.groupId : ''}</div>
             <div style="margin:3px 0"></div>
             ${bar('开心', rec.happiness)}
             ${bar('饥饿', rec.hunger, true)}

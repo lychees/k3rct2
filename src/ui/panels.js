@@ -204,7 +204,9 @@ export class Panels {
       let happy = 0;
       for (const p of g.peeps.list) happy += p.happiness;
       const avg = n ? happy / n : 0;
-      d.innerHTML = `当前园内游客:<b>${n}</b><br>累计游客:${g.economy.totalGuests}<br>平均开心度:${(avg * 100) | 0}%`;
+      const groups = new Set(g.peeps.list.map(p => p.groupId).filter(Boolean)).size;
+      const kids = g.peeps.list.filter(p => p.kid).length;
+      d.innerHTML = `当前园内游客:<b>${n}</b>(家庭组 ${groups} · 儿童 ${kids})<br>累计游客:${g.economy.totalGuests}<br>平均开心度:${(avg * 100) | 0}%`;
       const th = g.thoughts ? g.thoughts.list : [];
       tl.innerHTML = '<div class="rct-item"><span class="sub"><b>游客想法</b></span></div>' +
         (th.length ? th : [{ name: '', text: '(还没有想法)' }])

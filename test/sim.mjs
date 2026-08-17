@@ -249,6 +249,23 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
   }
 }
 
+// 家庭组与游客偏好
+{
+  const withGid = game.peeps.list.filter(p => p.groupId > 0);
+  const kids = game.peeps.list.filter(p => p.kid);
+  assertT(withGid.length > 0, '家庭组:有组队游客');
+  assertT(kids.length > 0 && kids.every(p => p.scale === 0.72 && p.thrill <= 0.46), `家庭组:儿童小体型低刺激偏好(${kids.length} 人)`);
+  const byG = {};
+  for (const p of withGid) (byG[p.groupId] ||= []).push(p);
+  assertT(Object.values(byG).every(g2 => g2.length >= 1 && g2.length <= 5), '家庭组:组大小 ≤5(成员会陆续离园)');
+  assertT(Object.values(byG).some(g2 => g2.some(p => p.isLeader)), '家庭组:存在领队仍在园的小组');
+  const fakeRide = { id: 999, status: 'open', broken: false, price: 3, queue: [], queueCells: [1, 2], def: { kind: 'flat', intensity: 64 }, intensity: 64 };
+  assertT(kids.length > 0 && !game.rides.wantsRide(kids[0], fakeRide), '偏好:儿童不玩高强度设施');
+  const adult = game.peeps.list.find(p => !p.kid);
+  const gentle = { ...fakeRide, def: { kind: 'flat', intensity: 20 }, intensity: 20 };
+  assertT(game.rides.wantsRide(adult, gentle) === game.rides.wantsRide(adult, gentle), '偏好:同一游客对同一设施决定稳定');
+}
+
 // 涂装/改名
 {
   const ride = game.rides.list[0];

@@ -78,26 +78,28 @@ export class PeepRenderer {
       const moving = p.state === 'wander' || p.state === 'enter' || p.state === 'leaving' || p.state === 'walk';
       const bob = moving ? Math.abs(Math.sin(p.walkT * 9)) * 0.05 : Math.sin(p.walkT * 2 + p.id) * 0.01;
       const swing = moving ? Math.sin(p.walkT * 9) * 0.09 : 0;
+      const ps = p.scale ?? 1;               // 儿童体型 0.72
+      scl.set(ps, ps, ps);
       q.setFromAxisAngle(up, p.yaw);
       const fx = Math.sin(p.yaw + Math.PI), fz = Math.cos(p.yaw + Math.PI);
       const sx = Math.cos(p.yaw + Math.PI), szz = -Math.sin(p.yaw + Math.PI);
-      pos.set(px, gy + 0.58 + bob, pz); m4.compose(pos, q, scl);
+      pos.set(px, gy + (0.58 + bob) * ps, pz); m4.compose(pos, q, scl);
       this.mBody.setMatrixAt(i, m4);
       col.setHex(p.shirt); this.mBody.setColorAt(i, col);
-      pos.set(px, gy + 1.02 + bob, pz); m4.compose(pos, q, scl);
+      pos.set(px, gy + (1.02 + bob) * ps, pz); m4.compose(pos, q, scl);
       this.mHead.setMatrixAt(i, m4);
       col.setHex(p.skin); this.mHead.setColorAt(i, col);
-      pos.set(px, gy + 1.17 + bob, pz); m4.compose(pos, q, scl);
+      pos.set(px, gy + (1.17 + bob) * ps, pz); m4.compose(pos, q, scl);
       this.mHair.setMatrixAt(i, m4);
-      pos.set(px + fx * swing + sx * 0.09, gy + 0.16 + (swing > 0 ? swing * 0.4 : 0), pz + fz * swing + szz * 0.09);
+      pos.set(px + (fx * swing + sx * 0.09) * ps, gy + (0.16 + (swing > 0 ? swing * 0.4 : 0)) * ps, pz + (fz * swing + szz * 0.09) * ps);
       m4.compose(pos, q, scl); this.mLegL.setMatrixAt(i, m4);
       col.setHex(p.pants); this.mLegL.setColorAt(i, col);
-      pos.set(px - fx * swing - sx * 0.09, gy + 0.16 + (-swing > 0 ? -swing * 0.4 : 0), pz - fz * swing - szz * 0.09);
+      pos.set(px - (fx * swing + sx * 0.09) * ps, gy + (0.16 + (-swing > 0 ? -swing * 0.4 : 0)) * ps, pz - (fz * swing + szz * 0.09) * ps);
       m4.compose(pos, q, scl); this.mLegR.setMatrixAt(i, m4);
       this.mLegR.setColorAt(i, col);
       // 员工帽(只有员工记录带 capCol,游客永不戴帽 → 一眼区分;乘坐中不渲染帽)
       if (!riderPos && p.capCol) {
-        pos.set(px, gy + 1.26 + bob, pz); m4.compose(pos, q, scl);
+        pos.set(px, gy + (1.26 + bob) * ps, pz); m4.compose(pos, q, scl);
         this.mCap.setMatrixAt(i, m4);
         col.setHex(p.capCol); this.mCap.setColorAt(i, col);
       } else {
@@ -105,7 +107,7 @@ export class PeepRenderer {
       }
       if (!riderPos && p.hasSouvenir) {
         const bt = performance.now() / 1000;
-        pos.set(px + sx * 0.3, gy + 1.55 + Math.sin(bt * 2 + p.id) * 0.08, pz + szz * 0.3);
+        pos.set(px + sx * 0.3 * ps, gy + (1.55 + Math.sin(bt * 2 + p.id) * 0.08) * ps, pz + szz * 0.3 * ps);
         m4.compose(pos, q, scl);
         this.mBalloon.setMatrixAt(i, m4);
         col.setHex(p.balloonCol); this.mBalloon.setColorAt(i, col);
@@ -114,7 +116,7 @@ export class PeepRenderer {
       }
       // 雨伞(下雨时撑起;乘坐中不收伞——直接收起)
       if (!riderPos && p.hasUmbrella && this.game.weather?.mode === 'rain') {
-        pos.set(px, gy + 1.62 + bob * 0.5, pz);
+        pos.set(px, gy + (1.62 + bob * 0.5) * ps, pz);
         m4.compose(pos, q, scl);
         this.mUmbrella.setMatrixAt(i, m4);
         col.setHex(p.shirt).multiplyScalar(1.1); this.mUmbrella.setColorAt(i, col);
