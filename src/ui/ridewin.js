@@ -7,8 +7,9 @@ export function openRideWindow(game, wm, rideId) {
   const ride = game.rides.findRide(rideId);
   if (!ride) return;
   const id = 'ride-' + rideId;
+  const titleOf = () => (ride.customName || ride.def.name) + ' #' + ride.id;
   const w = wm.open({
-    id, title: ride.def.name + ' #' + ride.id, x: 300 + (rideId % 5) * 30, y: 120 + (rideId % 5) * 26,
+    id, title: titleOf(), x: 300 + (rideId % 5) * 30, y: 120 + (rideId % 5) * 26,
     build(el, win) {
       const statusRow = document.createElement('div');
       statusRow.className = 'rct-row';
@@ -43,6 +44,40 @@ export function openRideWindow(game, wm, rideId) {
       });
       priceRow.append(document.createTextNode('票价:'), minus, priceLabel, plus);
       el.appendChild(priceRow);
+      // 改名 + 涂装
+      const nameRow = document.createElement('div');
+      nameRow.className = 'rct-row';
+      const nameIn = document.createElement('input');
+      nameIn.placeholder = ride.def.name;
+      nameIn.maxLength = 16;
+      nameIn.value = ride.customName || '';
+      nameIn.style.cssText = 'flex:1;min-width:90px;background:rgba(20,24,34,0.8);border:1px solid rgba(255,255,255,0.25);color:#e8e6d0;padding:4px 6px;border-radius:3px;font-size:12px;outline:none';
+      nameIn.addEventListener('keydown', e => e.stopPropagation());
+      const nameBtn = document.createElement('button');
+      nameBtn.className = 'rct-btn small'; nameBtn.textContent = '改名';
+      nameBtn.addEventListener('click', () => {
+        game.dispatchAction({ type: 'rideRename', rideId: ride.id, name: nameIn.value });
+        wm.setTitle(id, titleOf());
+        game.audio?.play('click');
+      });
+      nameRow.append(nameIn, nameBtn);
+      el.appendChild(nameRow);
+      const paintRow = document.createElement('div');
+      paintRow.className = 'rct-row';
+      paintRow.appendChild(document.createTextNode('涂装:'));
+      for (const col of [0xffffff, 0xd84a3a, 0xe87a30, 0xe8b830, 0x48b050, 0x3a7ad8, 0x8a5ad8, 0x303038]) {
+        const sw = document.createElement('button');
+        sw.className = 'rct-btn small';
+        sw.style.cssText = `width:20px;height:20px;padding:0;background:#${col.toString(16).padStart(6, '0')};border-color:rgba(255,255,255,0.35)`;
+        sw.title = col === 0xffffff ? '默认色' : '#' + col.toString(16).padStart(6, '0');
+        sw.addEventListener('click', () => {
+          game.dispatchAction({ type: 'ridePaint', rideId: ride.id, color: col });
+          game.audio?.play('click');
+          sync();
+        });
+        paintRow.appendChild(sw);
+      }
+      el.appendChild(paintRow);
       const stats = document.createElement('div');
       stats.className = 'hint';
       el.appendChild(stats);

@@ -16,6 +16,7 @@ export const COASTER_PIECES = [
   { id: 'left', name: '左弯', cost: 190, turn: 1 },
   { id: 'right', name: '右弯', cost: 190, turn: -1 },
   { id: 'brake', name: '刹车段', cost: 170 },
+  { id: 'loop', name: '立环', cost: 450, loop: true },
 ];
 export const PIECE_BY_ID = Object.fromEntries(COASTER_PIECES.map(p => [p.id, p]));
 export const MAX_LEVEL = 14;      // 轨道相对站台的最高层级
@@ -24,15 +25,15 @@ export const MAX_PIECES = 140;    // 单条轨道段数上限
 // 风格参数:件集、轨道配色、车厢、物理档案
 export const TRACK_STYLES = {
   coaster: {   // 木制过山车:重力势能物理
-    pieces: ['flat', 'lift', 'down', 'up', 'left', 'right', 'brake'],
+    pieces: ['flat', 'lift', 'down', 'up', 'left', 'right', 'brake', 'loop'],
     kind: 'rails', railCol: COL.railTrack, spineCol: COL.woodDark, tieCol: COL.wood, supportCol: COL.wood,
     canopyCol: 0x4273b8,
     cars: 4, perCar: 2, carGap: 1.25, carBody: 'coaster',
     physics: 'gravity', liftV: 2.0, minV: 1.2, gravityScale: 0.95, screamV: 5,
     stationCost: 300,
   },
-  train: {     // 观光小火车:匀速巡航(只允许平轨与弯道)
-    pieces: ['flat', 'left', 'right'],
+  train: {     // 观光小火车:匀速巡航(平轨/弯道/可多设站台,逐站停靠)
+    pieces: ['station', 'flat', 'left', 'right'],
     kind: 'rails', railCol: 0x4a4a52, spineCol: 0, tieCol: 0x5a4632, supportCol: 0x5a4632,
     canopyCol: 0x48b050,
     cars: 4, perCar: 2, carGap: 1.45, carBody: 'train',
@@ -86,6 +87,16 @@ export function sampleTrack(ride, w) {
     const dx = World.DX[pc.dir], dy = World.DY[pc.dir];
     // 入口边中点(朝向反方向退半格)
     const ex = c.x - dx * TILE / 2, ez = c.z - dy * TILE / 2;
+    if (def.loop) {
+      // 立环:平面直线前进,高度走竖直圆(同高同向进出)
+      const R = 1.35;
+      for (let k = 0; k <= 8; k++) {
+        const t = k / 8;
+        const ang = t * Math.PI * 2;
+        push(ex + dx * TILE * t, y0 + R * (1 - Math.cos(ang)), ez + dy * TILE * t, 'loop');
+      }
+      continue;
+    }
     if (!def.turn) {
       for (let k = 0; k <= 2; k++) {
         const t = k / 2;
@@ -167,7 +178,7 @@ export function buildCustomCoaster(game, ride) {
     cars.push(car);
   }
 
-  const state = { s: 0, v: 0, mode: 'load', timer: 0 };
+  const state = { s: 0, v: 0, mode: 'load', timer: 0, stationIdx: 0 };
   let external = null;
   let S = null;   // 采样缓存:{pts, meta, segLen[], total, station:[i0,i1], hMax}
 
@@ -198,16 +209,17 @@ export function buildCustomCoaster(game, ride) {
         if (meta[i] === 'brake') b.bar([p.x, p.y + 0.05, p.z], [q.x, q.y + 0.05, q.z], 0.16, 0.08, 0x8a8d8f, 1);
       }
     }
-    // 枕木 + 支架
+    // 枕木 + 支架(立环段不加,避免柱子穿环)
     for (let i = 0; i < N2; i += 2) {
       const p = at(i), q = at(i + 1);
       const tx = q.x - p.x, tz = q.z - p.z;
       const tl = Math.hypot(tx, tz) || 1;
       const ox = -tz / tl, oz = tx / tl;
-      if (style.tieCol) {
+      const isLoop = meta[i] === 'loop' || meta[(i + 1) % M] === 'loop';
+      if (style.tieCol && !isLoop) {
         b.bar([p.x - ox * 0.55, p.y - 0.02, p.z - oz * 0.55], [p.x + ox * 0.55, p.y - 0.02, p.z + oz * 0.55], 0.14, 0.07, style.tieCol, 1);
       }
-      if (i % 6 === 0) {
+      if (i % 6 === 0 && !isLoop) {
         const gtx = World.worldToTileX(p.x), gty = World.worldToTileY(p.z);
         if (w.in(gtx, gty)) {
           const ground = w.surfaceY(gtx, gty);
@@ -242,15 +254,21 @@ export function buildCustomCoaster(game, ride) {
     if (closed) {
       const segLen = [];
       let total = 0, hMax = -1e9;
-      let st0 = -1, st1 = -1;
       for (let i = 0; i < M; i++) {
         const d = at(i + 1).distanceTo(at(i));
         segLen.push(d);
         total += d;
         hMax = Math.max(hMax, pts[i].y);
-        if (meta[i] === 'station') { if (st0 < 0) st0 = i; st1 = i; }
       }
-      S = { pts, meta, segLen, total, station: [st0, st1], hMax };
+      // 停靠站序列:连续的 station 采样段为一站(沿轨道顺序)
+      const stops = [];
+      for (let i = 0; i < M; i++) {
+        if (meta[i] !== 'station') continue;
+        const last = stops[stops.length - 1];
+        if (last && last.i1 === i - 1) last.i1 = i;
+        else stops.push({ i0: i, i1: i });
+      }
+      S = { pts, meta, segLen, total, stops, hMax };
       for (const car of cars) car.visible = true;
     } else {
       S = null;
@@ -321,15 +339,19 @@ export function buildCustomCoaster(game, ride) {
         }
       }
       const sMod = ((state.s % M) + M) % M;
-      const [st0, st1] = S.station;
-      if (st0 >= 0) {
-        if (!lapArmed && sMod > st1 + 2) lapArmed = true;          // 已驶离站台区
-        if (lapArmed && sMod >= st0 && sMod <= st1) {              // 回到站台 → 卸客
-          state.s = st0;
+      const stops = S.stops;
+      if (stops.length) {
+        const next = (state.stationIdx + 1) % stops.length;   // 下一站
+        const { i0, i1 } = stops[next];
+        if (sMod > i1 + 1 || sMod < i0 - 1) lapArmed = true;  // 已驶离上一站区域
+        if (lapArmed && sMod >= i0 && sMod <= i1) {           // 进站 → 停靠上下客
+          state.s = i0;
           state.mode = 'load';
           state.timer = ride.status === 'open' ? 3.2 : 2.0;
           state.v = 0;
-          game.rides.finishRide(ride);
+          state.stationIdx = next;
+          lapArmed = false;
+          game.rides.trainStop(ride, next);
         }
       }
     }

@@ -231,7 +231,9 @@ export class Peeps {
 
   _rideAtGate(tile) {
     const g = this.game;
+    const key = tile[0] + ',' + tile[1];
     for (const ride of g.rides.list) {
+      if (ride.stationGateMap && ride.stationGateMap[key] !== undefined) return ride;   // 多站台设施的各站外邻
       if (ride.entrance.outer[0] === tile[0] && ride.entrance.outer[1] === tile[1]) return ride;
       if (ride.def.kind === 'shop' && ride.entrance.outer[0] === tile[0] && ride.entrance.outer[1] === tile[1]) return ride;
     }
@@ -259,7 +261,7 @@ export class Peeps {
   updateQueuePos(p) {
     const ride = p.queueRide;
     if (!ride) return;
-    const cell = this.game.rides.queueCellOf(ride, p.queueIndex);
+    const cell = this.game.rides.queueCellOf(ride, p.queueIndex, p.queueStation ?? 0);
     const w = this.game.world;
     const c = w.tileCenter(cell[0], cell[1]);
     p.x = c.x + Math.sin(p.id * 3.7) * 0.25;
@@ -272,10 +274,14 @@ export class Peeps {
     this.game.rides.charge(ride, peep);
     peep.state = 'ride';
     peep.hidden = true;
+    // 多站台设施:随机选一个后续站下车
+    const N = ride.stations?.length || 1;
+    const from = peep.queueStation ?? 0;
+    peep._destStation = N > 1 ? (from + 1 + Math.floor(rand() * (N - 1))) % N : 0;
   }
-  alightRide(peep, ride) {
+  alightRide(peep, ride, cellOverride = null) {
     const w = this.game.world;
-    const cell = ride.exit.outer;
+    const cell = cellOverride || ride.exit.outer;
     peep.queueRide = null;
     peep.hidden = false;
     peep.state = 'wander';
@@ -333,11 +339,11 @@ export class Peeps {
   releaseFromQueue(peep) {
     const ride = peep.queueRide;
     if (ride) {
-      const i = ride.queue.indexOf(peep);
-      if (i >= 0) ride.queue.splice(i, 1);
-      ride.queue.forEach((q, qi) => { q.queueIndex = qi; this.updateQueuePos(q); });
+      const q = ride.queues?.[peep.queueStation ?? 0] || ride.queue;
+      const i = q.indexOf(peep);
+      if (i >= 0) q.splice(i, 1);
+      this.game.rides._repositionQueue?.(ride);
     }
-    ride && this.game.rides._repositionQueue?.(ride);
     peep.hidden = false;
     peep.queueRide = null;
     if (peep.state === 'queue' || peep.state === 'ride') peep.state = 'wander';

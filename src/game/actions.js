@@ -12,6 +12,7 @@ export const ACTIONS = [
   'scenery', 'sceneryRemove', 'ridePlace', 'rideRemove', 'rideStatus', 'ridePrice', 'rideGate',
   'entranceFee', 'researchLevel', 'staffHire', 'staffFire', 'loanBorrow', 'loanRepay', 'parkOpen', 'pause', 'chat',
   'cheatMoney', 'researchAll', 'coasterBegin', 'coasterPiece', 'coasterUndo', 'coasterFinish',
+  'rideRename', 'ridePaint',
 ];
 
 export function applyAction(g, a, charge = true) {
@@ -129,6 +130,20 @@ export function applyAction(g, a, charge = true) {
       const ride = g.rides.findRide(a.rideId);
       if (!ride) return fail('设施不存在');
       ride.price = Math.max(0, Math.min(20, Math.round(a.price * 2) / 2));
+      return { ok: true, cost: 0 };
+    }
+    case 'rideRename': {
+      const ride = g.rides.findRide(a.rideId);
+      if (!ride) return fail('设施不存在');
+      const nm = String(a.name || '').replace(/[<>&"]/g, '').trim().slice(0, 16);
+      ride.customName = nm || null;
+      return { ok: true, cost: 0 };
+    }
+    case 'ridePaint': {
+      const ride = g.rides.findRide(a.rideId);
+      if (!ride) return fail('设施不存在');
+      ride.paint = Math.max(0, Math.min(0xffffff, Math.round(a.color ?? 0xffffff)));
+      g.rides.applyPaint(ride);
       return { ok: true, cost: 0 };
     }
     case 'entranceFee': {

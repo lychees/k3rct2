@@ -4,11 +4,15 @@
 export class Sfx {
   constructor() {
     this.ctx = null;
+    this._loops = {};      // 环境循环音(name → {gain, nodes...})
     try { this.muted = localStorage.getItem('rct2js-muted') === '1'; } catch { this.muted = false; }
   }
   toggleMute() {
     this.muted = !this.muted;
     try { localStorage.setItem('rct2js-muted', this.muted ? '1' : '0'); } catch { /* 隐身模式等忽略 */ }
+    if (this.muted) for (const k in this._loops) {   // 静音即停所有环境音
+      try { this._loops[k].gain.gain.value = 0; } catch { /* 忽略 */ }
+    }
     return this.muted;
   }
   _ensure() {
@@ -16,8 +20,19 @@ export class Sfx {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
     try {
-      if (!this.ctx) this.ctx = new AC();
-      if (this.ctx.state === 'suspended') this.ctx.resume();
+      if (!this.ctx) {
+        this.ctx = new AC();
+        // autoplay 策略:上下文可能在首次用户手势前被挂起 → 手势一到即恢复
+        if (typeof document !== 'undefined') {
+          const resume = () => { try { this.ctx?.resume?.(); } catch { /* 忽略 */ } };
+          document.addEventListener('pointerdown', resume);
+          document.addEventListener('keydown', resume);
+        }
+      }
+      if (this.ctx.state === 'suspended') {   // 节流 resume,避免控制台刷屏
+        const now = Date.now();
+        if (now - (this._resumeTried || 0) > 1500) { this._resumeTried = now; this.ctx.resume(); }
+      }
       return this.ctx;
     } catch { return null; }
   }
@@ -29,7 +44,7 @@ export class Sfx {
     if (fn) { try { fn.call(this, ctx); } catch { /* 播放失败不致命 */ } }
   }
 
-  _tone(ctx, { f = 440, f2 = 0, t = 0.08, type = 'square', g = 0.1, at = 0 }) {
+  _tone(ctx, { f = 440, f2 = 0, t = 0.08, type = 'square', g = 0.1, at = 0, dest = null }) {
     const o = ctx.createOscillator(), ga = ctx.createGain();
     const t0 = ctx.currentTime + at;
     o.type = type;
@@ -37,7 +52,7 @@ export class Sfx {
     if (f2) o.frequency.exponentialRampToValueAtTime(Math.max(30, f2), t0 + t);
     ga.gain.setValueAtTime(g, t0);
     ga.gain.exponentialRampToValueAtTime(0.0001, t0 + t);
-    o.connect(ga).connect(ctx.destination);
+    o.connect(ga).connect(dest || ctx.destination);
     o.start(t0); o.stop(t0 + t + 0.02);
   }
   _noise(ctx, { t = 0.15, g = 0.12, f = 800, at = 0 }) {
@@ -98,6 +113,75 @@ export class Sfx {
   _rumble(ctx) { this._noise(ctx, { t: 0.5, g: 0.11, f: 150 }); }
   // 提升坡链条咔嗒
   _clack(ctx) { this._tone(ctx, { f: 1400, t: 0.02, type: 'square', g: 0.03 }); }
+
+  // ---------- 环境循环音:雨声 / 人群嘈杂 / 旋转木马八音盒 ----------
+  // 每 ~0.25s 由 UI 调用;音量平滑趋近目标,静音时全部关停
+  ambient({ rain = false, crowd = 0, music = 0 } = {}) {
+    if (this.muted) return;
+    const ctx = this._ensure();
+    if (!ctx) return;
+    this._noiseLoop(ctx, 'rain', rain ? 0.045 : 0, 900);
+    this._noiseLoop(ctx, 'crowd', Math.min(1, crowd) * 0.035, 380);
+    this._musicLoop(ctx, music);
+  }
+  _noiseLoop(ctx, name, targetGain, cutoff) {
+    let L = this._loops[name];
+    if (!L && targetGain > 0) {
+      const len = ctx.sampleRate * 2;
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      let last = 0;
+      for (let i = 0; i < len; i++) {   // 棕噪(雨/人群底噪)
+        const w2 = Math.random() * 2 - 1;
+        last = (last + 0.02 * w2) / 1.02;
+        d[i] = last * 3;
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buf; src.loop = true;
+      const fl = ctx.createBiquadFilter();
+      fl.type = 'lowpass'; fl.frequency.value = cutoff;
+      const ga = ctx.createGain(); ga.gain.value = 0;
+      src.connect(fl); fl.connect(ga); ga.connect(ctx.destination);
+      src.start();
+      L = this._loops[name] = { gain: ga, nodes: [src] };
+    }
+    if (L) L.gain.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.5);
+  }
+  // 八音盒:3/4 圆舞曲音型(自作曲,不复制原版旋律),lookahead 调度
+  _musicLoop(ctx, amt) {
+    let L = this._loops.music;
+    if (!L && amt > 0.02) {
+      const ga = ctx.createGain();
+      ga.gain.value = 0;
+      ga.connect(ctx.destination);
+      L = this._loops.music = { gain: ga, step: 0, nextT: ctx.currentTime + 0.1 };
+      L.timer = setInterval(() => this._musicStep(ctx), 120);
+    }
+    if (L) L.gain.gain.setTargetAtTime(Math.min(1, amt) * 0.10, ctx.currentTime, 0.4);
+  }
+  _musicStep(ctx) {
+    const L = this._loops.music;
+    if (!L) return;
+    // C - Dm - F - G 走向的分解和弦,每小节 3 拍
+    const PROG = [
+      [261.6, 329.6, 392.0], [261.6, 329.6, 392.0],
+      [293.7, 349.2, 440.0], [261.6, 329.6, 392.0],
+      [349.2, 440.0, 523.3], [349.2, 440.0, 523.3],
+      [246.9, 293.7, 392.0], [261.6, 329.6, 392.0],
+    ];
+    while (L.nextT < ctx.currentTime + 0.35) {
+      const chord = PROG[((L.step / 3) | 0) % PROG.length];
+      const beat = L.step % 3;
+      const at = Math.max(0, L.nextT - ctx.currentTime);
+      if (beat === 0) this._tone(ctx, { f: chord[0] / 2, t: 0.5, type: 'triangle', g: 0.5, at, dest: L.gain });
+      else {
+        this._tone(ctx, { f: chord[1], t: 0.3, type: 'sine', g: 0.4, at, dest: L.gain });
+        this._tone(ctx, { f: chord[2], t: 0.3, type: 'sine', g: 0.32, at, dest: L.gain });
+      }
+      L.step++;
+      L.nextT += 0.36;
+    }
+  }
   _fanfare(ctx) { [523, 659, 784].forEach((f, i) => this._tone(ctx, { f, t: 0.09, type: 'triangle', g: 0.1, at: i * 0.07 })); }
   _win(ctx) { [523, 659, 784, 1046].forEach((f, i) => this._tone(ctx, { f, t: 0.13, type: 'triangle', g: 0.12, at: i * 0.1 })); }
   _lose(ctx) { [392, 330, 262].forEach((f, i) => this._tone(ctx, { f, t: 0.15, type: 'triangle', g: 0.1, at: i * 0.12 })); }

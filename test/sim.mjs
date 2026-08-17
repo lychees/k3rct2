@@ -158,18 +158,15 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
     ['mycoaster', ['lift', 'lift', 'right', 'flat', 'right', 'down', 'down', 'flat', 'right', 'flat', 'right']],
     ['train', ['flat', 'right', 'flat', 'right', 'flat', 'right', 'left', 'right', 'right']],
     ['flume', ['lift', 'lift', 'right', 'flat', 'right', 'down', 'down', 'flat', 'right', 'flat', 'right']],
+    ['mycoaster+loop', ['lift', 'lift', 'right', 'flat', 'right', 'down', 'down', 'flat', 'right', 'loop', 'right']],
   ];
   for (const [defId, SEQ] of PLANS) {
+    const realDef = defId === 'mycoaster+loop' ? 'mycoaster' : defId;
     let anchor = null;
     outer2: for (let ay = ey + 16; ay < ey + 55; ay++) for (let ax = ex - 24; ax < ex + 20; ax++) {
-      const h0 = game.world.maxH(ax, ay);
-      let okA = true;   // 3×5 范围(站台往南 1 格、往北 3 格)需要等高
-      for (let dy = -1; dy <= 3 && okA; dy++) for (let dx = 0; dx <= 2 && okA; dx++) {
-        if (game.world.maxH(ax + dx, ay + dy) !== h0 || game.world.minH(ax + dx, ay + dy) !== h0) okA = false;
-      }
-      if (!okA || !game.rides.canBeginCustom(ax, ay).ok) continue;
-      // 用假 ride 预演整圈
-      const fake = { def: DEF_BY_ID[defId], pieces: [{ t: 'station', x: ax, y: ay, h: 0, dir: 1 }], baseY: h0 * H_UNIT, custom: true, complete: false };
+      if (!game.rides.canBeginCustom(ax, ay).ok) continue;
+      // 用假 ride 预演整圈(canAddPiece 自带地形/自交校验)
+      const fake = { def: DEF_BY_ID[realDef], pieces: [{ t: 'station', x: ax, y: ay, h: 0, dir: 1 }], baseY: game.world.maxH(ax, ay) * H_UNIT, custom: true, complete: false };
       let okAll = true;
       for (const t of SEQ) {
         const chk = game.rides.canAddPiece(fake, t);
@@ -180,7 +177,7 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
     }
     assertT(!!anchor, `${defId}:找到可建站台位置`);
     if (!anchor) continue;
-    const b = game.rides.beginCustom(defId, anchor[0], anchor[1], 1);
+    const b = game.rides.beginCustom(realDef, anchor[0], anchor[1], 1);
     const ride = b.ride;
     let allOk = !!b.ok;
     for (const t of SEQ) {
@@ -202,11 +199,75 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
     game.rides.remove(ride.id);
   }
 }
+
+// 多站台小火车:两站各自排队、跨站上下车
+{
+  const SEQ = ['flat', 'right', 'station', 'right', 'flat', 'right', 'left', 'right', 'right'];
+  let anchor = null;
+  outer3: for (let ay = ey + 16; ay < ey + 55; ay++) for (let ax = ex - 24; ax < ex + 20; ax++) {
+    const h0 = game.world.maxH(ax, ay);
+    let okA = true;
+    for (let dy = -1; dy <= 3 && okA; dy++) for (let dx = 0; dx <= 2 && okA; dx++) {
+      if (game.world.maxH(ax + dx, ay + dy) !== h0 || game.world.minH(ax + dx, ay + dy) !== h0) okA = false;
+    }
+    if (!okA || !game.rides.canBeginCustom(ax, ay).ok) continue;
+    if (!game.paths.canPlace(ax - 1, ay, PATH.TARMAC).ok || !game.paths.canPlace(ax + 1, ay + 3, PATH.TARMAC).ok) continue;
+    const fake = { def: DEF_BY_ID.train, pieces: [{ t: 'station', x: ax, y: ay, h: 0, dir: 1 }], baseY: h0 * H_UNIT, custom: true, complete: false };
+    let okAll = true;
+    for (const t of SEQ) {
+      const chk = game.rides.canAddPiece(fake, t);
+      if (!chk.ok) { okAll = false; break; }
+      fake.pieces.push({ t, x: chk.x, y: chk.y, h: chk.h, dir: chk.dir });
+    }
+    if (okAll) { anchor = [ax, ay]; break outer3; }
+  }
+  assertT(!!anchor, '多站台火车:找到可建位置');
+  if (anchor) {
+    const [ax, ay] = anchor;
+    game.paths.place(ax - 1, ay, PATH.TARMAC);
+    game.paths.place(ax + 1, ay + 3, PATH.TARMAC);
+    const b = game.rides.beginCustom('train', ax, ay, 1);
+    const ride = b.ride;
+    let allOk = !!b.ok;
+    for (const t of SEQ) {
+      const r = game.rides.addPiece(ride.id, t);
+      if (!r.ok) { allOk = false; console.error('段失败', t, r.reason); break; }
+    }
+    assertT(allOk, '多站台火车:铺轨 9 段(含第二站台)');
+    assertT(game.rides.finishCustom(ride.id).ok && ride.stations.length === 2, `多站台火车:闭环建成,站点数 ${ride.stations?.length}`);
+    assertT(Object.keys(ride.stationGateMap || {}).length === 2, '多站台火车:两站均接通路径');
+    game.peeps.trySpawn(); game.peeps.trySpawn();
+    const [pA, pB] = game.peeps.list.slice(-2);
+    pA.tile = [ax - 1, ay]; pB.tile = [ax + 1, ay + 3];
+    game.rides.joinQueue(pA, ride); game.rides.joinQueue(pB, ride);
+    assertT(pA.queueStation === 0 && pB.queueStation === 1, '多站台火车:两站分别入队');
+    ride.status = 'open';
+    for (let t = 0; t < 300 && ride.guestsServed < 2; t += 1 / 15) game.rides.update(1 / 15);
+    assertT(ride.guestsServed >= 2, `多站台火车:两名游客完成跨站乘坐(服务 ${ride.guestsServed})`);
+    assertT(pA.state !== 'ride' && pB.state !== 'ride', '多站台火车:游客均已下车');
+    game.rides.remove(ride.id);
+  }
+}
+
+// 涂装/改名
+{
+  const ride = game.rides.list[0];
+  const r1 = applyAction(game, { type: 'rideRename', rideId: ride.id, name: '飞驰骏马' }, true);
+  assertT(r1.ok && ride.customName === '飞驰骏马', '设施改名生效');
+  const r2 = applyAction(game, { type: 'ridePaint', rideId: ride.id, color: 0x48b050 }, true);
+  assertT(r2.ok && ride.paint === 0x48b050, '设施涂装生效');
+  const r3 = applyAction(game, { type: 'ridePaint', rideId: ride.id, color: 0xffffff }, true);
+  assertT(r3.ok && ride.paint === 0xffffff, '涂装恢复默认');
+}
+
 // 音效:无 window 环境下所有预设安全空转(不抛异常)
 {
   const sfx = new Sfx();
   let safe = true;
-  try { for (const n of ['click', 'place', 'remove', 'error', 'cash', 'fanfare', 'win', 'lose', 'scream', 'rumble', 'clack']) sfx.play(n); }
+  try {
+    for (const n of ['click', 'place', 'remove', 'error', 'cash', 'fanfare', 'win', 'lose', 'scream', 'rumble', 'clack']) sfx.play(n);
+    sfx.ambient({ rain: true, crowd: 1, music: 1 });   // 环境音也无头安全
+  }
   catch { safe = false; }
   assertT(safe, '音效模块无头环境安全空转');
 }

@@ -175,7 +175,7 @@ export class Panels {
     const renderExisting = () => {
       const mine = g.rides.list.filter(r => r.def.cat === cat);
       exist.innerHTML = mine.length ? '<div class="rct-sep"></div>已建:' + mine.map(r =>
-        ` <a href="#" data-ride="${r.id}" style="color:#9fd0ff">${r.def.name}#${r.id}</a>`).join('') : '';
+        ` <a href="#" data-ride="${r.id}" style="color:#9fd0ff">${r.customName || r.def.name}#${r.id}</a>`).join('') : '';
       exist.querySelectorAll('a[data-ride]').forEach(a => a.addEventListener('click', ev => {
         ev.preventDefault();
         g.rides.openWindow(Number(a.dataset.ride));
@@ -532,7 +532,7 @@ export class Panels {
     el.appendChild(pieceBox);
     const buildPieceBtns = (styleKey) => {
       pieceBox.innerHTML = '';
-      const defs = COASTER_PIECES.filter(p => p.id !== 'station' && TRACK_STYLES[styleKey].pieces.includes(p.id));
+      const defs = COASTER_PIECES.filter(p => TRACK_STYLES[styleKey].pieces.includes(p.id));
       [defs.slice(0, 4), defs.slice(4)].forEach(rowDefs => {
         if (!rowDefs.length) return;
         const row = document.createElement('div');

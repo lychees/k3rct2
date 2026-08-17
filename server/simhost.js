@@ -131,6 +131,7 @@ export class SimHost {
         id: r.id, defId: r.def.id, x: r.x, y: r.y, status: r.status, price: r.price,
         guestsServed: r.guestsServed, incomeTotal: r.incomeTotal,
         reliability: r.reliability, broken: r.broken,
+        name: r.customName || null, paint: r.paint ?? null,
         coaster: r.api?.serialize ? r.api.serialize() : null,
         ...(r.custom ? {
           custom: 1, complete: r.complete ? 1 : 0,
@@ -203,6 +204,7 @@ export class SimHost {
         id: r.id, defId: r.def.id, x: r.x, y: r.y, status: r.status, price: r.price,
         guestsServed: r.guestsServed, incomeTotal: r.incomeTotal,
         reliability: r.reliability, broken: r.broken,
+        name: r.customName || null, paint: r.paint ?? null,
         coaster: r.api?.serialize ? r.api.serialize() : null,
         ...(r.custom ? {
           custom: 1, complete: r.complete ? 1 : 0,

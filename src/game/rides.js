@@ -701,6 +701,19 @@ export class Rides {
 
   defs() { return RIDE_DEFS; }
 
+  // 设施涂装:整体着色(材质克隆,白色=恢复默认;每个 mesh 记住原材质)
+  applyPaint(ride) {
+    if (!ride.group) return;
+    const tint = ride.paint ?? 0xffffff;
+    if (!ride._paintMat) ride._paintMat = this.mat.clone();
+    ride._paintMat.color.setHex(tint);
+    ride.group.traverse(o => {
+      if (!o.isMesh) return;
+      if (!o.userData.baseMat) o.userData.baseMat = o.material;
+      o.material = (tint === 0xffffff) ? o.userData.baseMat : ride._paintMat;
+    });
+  }
+
   // anchor: 足迹左下角 tile。返回 {ok, reason, tiles, anchor:{x,y}}
   validateAt(defId, x, y) {
     const def = DEF_BY_ID[defId];
@@ -949,7 +962,41 @@ export class Rides {
     this._buildVisuals(ride);
     this.list.push(ride);
     this.computeQueueCells(ride);
+    this.computeStations(ride);
     return { ok: true, cost: style.stationCost, ride };
+  }
+  // 定制轨道设施的站点扫描:连续 station 件为一站;为每站找临路的外邻格
+  computeStations(ride) {
+    if (!ride.custom) return;
+    const w = this.game.world;
+    const runs = [];
+    ride.pieces.forEach((pc, i) => {
+      if (pc.t !== 'station') return;
+      const last = runs[runs.length - 1];
+      if (last && last.end === i - 1) { last.end = i; last.tiles.push([pc.x, pc.y]); }
+      else runs.push({ end: i, tiles: [[pc.x, pc.y]] });
+    });
+    for (const run of runs) {
+      run.outer = null;
+      outer: for (const [tx, ty] of run.tiles) {
+        for (let d = 0; d < 4; d++) {
+          const [nx, ny] = w.neighbor(tx, ty, d);
+          if (w.in(nx, ny) && w.path[w.idx(nx, ny)] !== PATH.NONE && w.rideTile[w.idx(nx, ny)] === -1) {
+            run.outer = [nx, ny];
+            break outer;
+          }
+        }
+      }
+    }
+    ride.stations = runs;
+    ride.stationGateMap = {};
+    runs.forEach((run, i) => { if (run.outer) ride.stationGateMap[run.outer.join(',')] = i; });
+    // 队列数组与站点对齐(保留已有排队游客)
+    if (!ride.queues) ride.queues = [ride.queue];
+    const n = Math.max(1, runs.length);
+    while (ride.queues.length < n) ride.queues.push([]);
+    ride.queues.length = n;
+    ride.queues[0] = ride.queue;   // 主站队列 = 旧字段,兼容所有既有逻辑
   }
   // 轨道头 = 最后一段的出口(下一段的入口 tile/方向/高度)
   headOf(ride) { return exitOf(ride.pieces[ride.pieces.length - 1]); }
@@ -993,6 +1040,8 @@ export class Rides {
     const w = this.game.world;
     if (w.rideTile[w.idx(chk.x, chk.y)] === -1) w.rideTile[w.idx(chk.x, chk.y)] = ride.id;
     ride.api?.rebuild?.();
+    this.computeStations(ride);
+    if (ride.paint != null) this.applyPaint(ride);
     return { ok: true, cost: PIECE_BY_ID[type].cost };
   }
   undoPiece(rideId) {
@@ -1004,6 +1053,8 @@ export class Rides {
     const w = this.game.world;
     if (w.rideTile[w.idx(pc.x, pc.y)] === ride.id) w.rideTile[w.idx(pc.x, pc.y)] = -1;
     ride.api?.rebuild?.();
+    this.computeStations(ride);
+    if (ride.paint != null) this.applyPaint(ride);
     return { ok: true, cost: -Math.round(PIECE_BY_ID[pc.t].cost * 0.55) };
   }
   finishCustom(rideId) {
@@ -1036,6 +1087,8 @@ export class Rides {
     }
     ride.api?.rebuild?.();
     this.computeQueueCells(ride);
+    this.computeStations(ride);
+    if (ride.paint != null) this.applyPaint(ride);
     return { ok: true, cost: 0 };
   }
 
@@ -1079,6 +1132,7 @@ export class Rides {
     this.group.add(group);
     ride.group = group;
     ride.api = api;
+    if (ride.paint != null) this.applyPaint(ride);
   }
 
   // 读档恢复(不做校验/不改 world 数组——数组来自存档)
@@ -1119,9 +1173,12 @@ export class Rides {
         excitement: def.excitement, intensity: def.intensity, nausea: def.nausea,
       };
     }
+    ride.customName = s.name || null;
+    ride.paint = s.paint ?? null;
     this._buildVisuals(ride);
     this.list.push(ride);
     this.computeQueueCells(ride);
+    this.computeStations(ride);
     if (ride.api?.restore) ride.api.restore(s.coaster);
     return ride;
   }
@@ -1133,7 +1190,8 @@ export class Rides {
     const w = this.game.world;
     // 排队/乘坐的游客释放
     if (this.game.peeps) {
-      for (const p of [...ride.queue, ...ride.riders]) this.game.peeps.releaseFromQueue(p);
+      for (const q of (ride.queues || [ride.queue])) for (const p of [...q]) this.game.peeps.releaseFromQueue(p);
+      for (const p of [...ride.riders]) this.game.peeps.releaseFromQueue(p);
     }
     let refund;
     if (ride.custom) {   // 定制过山车:按轨道件清理与退款
@@ -1223,9 +1281,15 @@ export class Rides {
   joinQueue(peep, ride) {
     peep.state = 'queue';
     peep.queueRide = ride;
-    ride.queue.push(peep);
+    const key = peep.tile ? peep.tile[0] + ',' + peep.tile[1] : '';
+    peep.queueStation = ride.stationGateMap?.[key] ?? 0;   // 多站台设施:按所站位置进对应站的队
+    (ride.queues?.[peep.queueStation] || ride.queue).push(peep);
   }
-  queueCellOf(ride, index) {
+  queueCellOf(ride, index, stationIdx = 0) {
+    if (stationIdx > 0 && ride.stations?.[stationIdx]) {   // 支线站台:站台上站位
+      const tiles = ride.stations[stationIdx].tiles;
+      return tiles[Math.min(index, tiles.length - 1)];
+    }
     const cells = ride.queueCells;
     if (!cells.length) return ride.entrance.outer;
     return cells[Math.min(index, cells.length - 1)];
@@ -1272,24 +1336,38 @@ export class Rides {
       this.game.peeps.alightRide(peep, ride);
     }
     ride.riders.length = 0;
-    for (const p of [...ride.queue]) this.game.peeps.releaseFromQueue(p);   // 故障清队
+    for (const q of (ride.queues || [ride.queue])) for (const p of [...q]) this.game.peeps.releaseFromQueue(p);   // 故障清队
     this.game.messages?.add(`「${ride.def.name}」故障了!需要维修工`);
     this.game.economy?._emit?.('change');
   }
 
-  // 过山车:列车在站台装客(mode=='load')时批量上车
+  // 轨道列车(过山车/小火车/激流勇进):load 时在当前停靠站装客
   _updateCoaster(ride) {
     if (ride.status !== 'open') return;
     const st = ride.api.state;
     if (!st || st.mode !== 'load' || st.timer > 0.6) return;
-    if (!ride.queue.length) return;
-    const n = Math.min(ride.def.capacity, ride.queue.length);
+    const q = ride.queues?.[st.stationIdx ?? 0] || ride.queue;
+    if (!q.length) return;
+    const n = Math.min(ride.def.capacity - ride.riders.length, q.length);   // 多站:可能已有过站乘客
     for (let i = 0; i < n; i++) {
-      const peep = ride.queue.shift();
+      const peep = q.shift();
       ride.riders.push(peep);
       this.game.peeps.boardRide(peep, ride);
     }
     this._repositionQueue(ride);
+  }
+
+  // 定制列车停靠一站:到站下车(结算效果),过站乘客留在车上
+  trainStop(ride, stopIdx) {
+    const g = this.game;
+    const stay = [];
+    for (const peep of ride.riders) {
+      if ((peep._destStation ?? 0) === stopIdx) {
+        ride.guestsServed++;
+        g.peeps.alightRide(peep, ride, ride.stations?.[stopIdx]?.outer || ride.exit.outer);
+      } else stay.push(peep);
+    }
+    ride.riders = stay;
   }
   _updateFlat(ride, dt) {
     const g = this.game;
@@ -1326,7 +1404,8 @@ export class Rides {
     }
   }
   _repositionQueue(ride) {
-    ride.queue.forEach((p, i) => { p.queueIndex = i; this.game.peeps.updateQueuePos(p); });
+    const qs = ride.queues || [ride.queue];
+    qs.forEach((q, si) => q.forEach((p, i) => { p.queueIndex = i; p.queueStation = si; this.game.peeps.updateQueuePos(p); }));
   }
 
   // 一批游客乘坐结束:结算、放到出口
