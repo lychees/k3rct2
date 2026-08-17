@@ -1,4 +1,5 @@
-// 定制过山车:逐段铺设轨道件(站台/平直/提升坡/上下坡/左右弯/刹车),闭环验收后列车运行。
+// 轨道类设施编辑器:逐段铺设轨道件(站台/平直/提升坡/上下坡/左右弯/刹车),闭环验收后运行。
+// 三种风格(TRACK_STYLES):过山车(重力物理)、观光小火车(匀速巡游)、激流勇进(水槽+提升坡+俯冲)。
 // 轨道直接按件采样成折线(不经过样条),lift/刹车/站台区域与件一一对应,物理边界精确。
 import * as THREE from 'three';
 import { TILE, H_UNIT, COL, WATER_H } from '../config.js';
@@ -18,7 +19,35 @@ export const COASTER_PIECES = [
 ];
 export const PIECE_BY_ID = Object.fromEntries(COASTER_PIECES.map(p => [p.id, p]));
 export const MAX_LEVEL = 14;      // 轨道相对站台的最高层级
-export const MAX_PIECES = 140;    // 单条过山车段数上限
+export const MAX_PIECES = 140;    // 单条轨道段数上限
+
+// 风格参数:件集、轨道配色、车厢、物理档案
+export const TRACK_STYLES = {
+  coaster: {   // 木制过山车:重力势能物理
+    pieces: ['flat', 'lift', 'down', 'up', 'left', 'right', 'brake'],
+    kind: 'rails', railCol: COL.railTrack, spineCol: COL.woodDark, tieCol: COL.wood, supportCol: COL.wood,
+    canopyCol: 0x4273b8,
+    cars: 4, perCar: 2, carGap: 1.25, carBody: 'coaster',
+    physics: 'gravity', liftV: 2.0, minV: 1.2, gravityScale: 0.95, screamV: 5,
+    stationCost: 300,
+  },
+  train: {     // 观光小火车:匀速巡航(只允许平轨与弯道)
+    pieces: ['flat', 'left', 'right'],
+    kind: 'rails', railCol: 0x4a4a52, spineCol: 0, tieCol: 0x5a4632, supportCol: 0x5a4632,
+    canopyCol: 0x48b050,
+    cars: 4, perCar: 2, carGap: 1.45, carBody: 'train',
+    physics: 'cruise', cruiseV: 2.6, screamV: 1e9,
+    stationCost: 300,
+  },
+  flume: {     // 激流勇进:水槽漂流,提升坡 + 俯冲
+    pieces: ['flat', 'lift', 'down', 'left', 'right'],
+    kind: 'channel', wallCol: 0xb8b0a0, waterCol: 0x3a78c8, supportCol: 0xb8b0a0,
+    canopyCol: 0x3aa8a0,
+    cars: 2, perCar: 4, carGap: 3.4, carBody: 'boat',
+    physics: 'flume', liftV: 1.6, minV: 1.0, gravityScale: 0.85, screamV: 4,
+    stationCost: 350,
+  },
+};
 
 export function outDirOf(pc) {
   const turn = PIECE_BY_ID[pc.t].turn || 0;
@@ -84,24 +113,56 @@ export function sampleTrack(ride, w) {
   return { pts, meta };
 }
 
-// 由轨道件构建网格 + 列车物理(接口与 coaster.js 的预制版一致)
-export function buildCustomCoaster(game, ride) {
-  const w = game.world;
-  const group = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
-  let trackMesh = null;
-  const cars = [];
-  const carCols = [0xd84a3a, 0xe8b830, 0x3a7ad8, 0x48b050];
-  for (let i = 0; i < 4; i++) {
-    const car = new THREE.Group();
+// 车厢/船外观
+function buildCarBody(style, i, mat) {
+  const car = new THREE.Group();
+  if (style.carBody === 'train') {
+    const bodyCol = i === 0 ? 0x2a5a3a : 0x3a7a4a;   // 首节机车深绿
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.5, 1.25),
+      new THREE.MeshLambertMaterial({ color: bodyCol }));
+    body.position.y = 0.42;
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.12, 1.35),
+      new THREE.MeshLambertMaterial({ color: 0x303038 }));
+    roof.position.y = 0.75;
+    car.add(body, roof);
+    if (i === 0) {
+      const chim = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.3, 0.18),
+        new THREE.MeshLambertMaterial({ color: 0x222228 }));
+      chim.position.set(0, 0.85, 0.45);
+      car.add(chim);
+    }
+  } else if (style.carBody === 'boat') {
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.36, 1.7),
+      new THREE.MeshLambertMaterial({ color: 0x8a5a30 }));
+    body.position.y = 0.24;
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.1, 1.78),
+      new THREE.MeshLambertMaterial({ color: 0x6d4522 }));
+    rim.position.y = 0.44;
+    car.add(body, rim);
+  } else {
+    const carCols = [0xd84a3a, 0xe8b830, 0x3a7ad8, 0x48b050];
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.42, 1.1),
-      new THREE.MeshLambertMaterial({ color: carCols[i] }));
+      new THREE.MeshLambertMaterial({ color: carCols[i % 4] }));
     body.position.y = 0.32;
     const nose = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.18, 0.4),
       new THREE.MeshLambertMaterial({ color: 0x222228 }));
     nose.position.set(0, 0.2, 0.62);
     car.add(body, nose);
-    car.visible = false;               // 闭环建成后才出场
+  }
+  car.visible = false;               // 闭环建成后才出场
+  return car;
+}
+
+// 由轨道件构建网格 + 列车物理(接口与 coaster.js 的预制版一致)
+export function buildCustomCoaster(game, ride) {
+  const w = game.world;
+  const style = TRACK_STYLES[ride.def.style || 'coaster'];
+  const group = new THREE.Group();
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  let trackMesh = null;
+  const cars = [];
+  for (let i = 0; i < style.cars; i++) {
+    const car = buildCarBody(style, i, mat);
     group.add(car);
     cars.push(car);
   }
@@ -116,29 +177,36 @@ export function buildCustomCoaster(game, ride) {
     const closed = ride.complete && pts.length > 8;
     const M = pts.length;
     const b = new GeomBuilder();
-    const up = new THREE.Vector3(0, 1, 0);
     const N2 = closed ? M : M - 1;   // 闭环时最后点绕回起点
     const at = i => pts[((i % M) + M) % M];
-    // 轨道横断面:双钢轨 + 中央木脊梁
     for (let i = 0; i < N2; i++) {
       const p = at(i), q = at(i + 1);
-      const tx = q.x - p.x, ty = q.y - p.y, tz = q.z - p.z;
+      const tx = q.x - p.x, tz = q.z - p.z;
       const tl = Math.hypot(tx, tz) || 1;
-      const ox = -tz / tl * 0.34, oz = tx / tl * 0.34;
-      b.bar([p.x - ox, p.y + 0.1, p.z - oz], [q.x - ox, q.y + 0.1, q.z - oz], 0.09, 0.09, COL.railTrack, 1);
-      b.bar([p.x + ox, p.y + 0.1, p.z + oz], [q.x + ox, q.y + 0.1, q.z + oz], 0.09, 0.09, COL.railTrack, 1);
-      b.bar([p.x, p.y - 0.2, p.z], [q.x, p.y - 0.2, q.z], 0.34, 0.2, COL.woodDark, 1);
-      // 提升坡链条 / 刹车鳍
-      if (meta[i] === 'lift') b.bar([p.x, p.y + 0.02, p.z], [q.x, q.y + 0.02, q.z], 0.07, 0.05, 0x3a3a3a, 1);
-      if (meta[i] === 'brake') b.bar([p.x, p.y + 0.05, p.z], [q.x, q.y + 0.05, q.z], 0.16, 0.08, 0x8a8d8f, 1);
+      const ox = -tz / tl, oz = tx / tl;   // 单位侧向
+      if (style.kind === 'channel') {
+        // 水槽:两侧壁 + 水面
+        b.bar([p.x - ox * 0.5, p.y + 0.18, p.z - oz * 0.5], [q.x - ox * 0.5, q.y + 0.18, q.z - oz * 0.5], 0.1, 0.36, style.wallCol, 1);
+        b.bar([p.x + ox * 0.5, p.y + 0.18, p.z + oz * 0.5], [q.x + ox * 0.5, q.y + 0.18, q.z + oz * 0.5], 0.1, 0.36, style.wallCol, 1);
+        b.bar([p.x, p.y + 0.06, p.z], [q.x, q.y + 0.06, q.z], 0.86, 0.06, style.waterCol, 0.95);
+      } else {
+        // 双钢轨(+ 过山车中央木脊梁)
+        b.bar([p.x - ox * 0.34, p.y + 0.1, p.z - oz * 0.34], [q.x - ox * 0.34, q.y + 0.1, q.z - oz * 0.34], 0.09, 0.09, style.railCol, 1);
+        b.bar([p.x + ox * 0.34, p.y + 0.1, p.z + oz * 0.34], [q.x + ox * 0.34, q.y + 0.1, q.z + oz * 0.34], 0.09, 0.09, style.railCol, 1);
+        if (style.spineCol) b.bar([p.x, p.y - 0.2, p.z], [q.x, p.y - 0.2, q.z], 0.34, 0.2, style.spineCol, 1);
+        if (meta[i] === 'lift') b.bar([p.x, p.y + 0.02, p.z], [q.x, q.y + 0.02, q.z], 0.07, 0.05, 0x3a3a3a, 1);
+        if (meta[i] === 'brake') b.bar([p.x, p.y + 0.05, p.z], [q.x, q.y + 0.05, q.z], 0.16, 0.08, 0x8a8d8f, 1);
+      }
     }
-    // 枕木(每 2 个采样一根)+ 支架(每 6 个采样一根到地面)
+    // 枕木 + 支架
     for (let i = 0; i < N2; i += 2) {
       const p = at(i), q = at(i + 1);
       const tx = q.x - p.x, tz = q.z - p.z;
       const tl = Math.hypot(tx, tz) || 1;
-      const ox = -tz / tl * 0.55, oz = tx / tl * 0.55;
-      b.bar([p.x - ox, p.y - 0.02, p.z - oz], [p.x + ox, p.y - 0.02, p.z + oz], 0.14, 0.07, COL.wood, 1);
+      const ox = -tz / tl, oz = tx / tl;
+      if (style.tieCol) {
+        b.bar([p.x - ox * 0.55, p.y - 0.02, p.z - oz * 0.55], [p.x + ox * 0.55, p.y - 0.02, p.z + oz * 0.55], 0.14, 0.07, style.tieCol, 1);
+      }
       if (i % 6 === 0) {
         const gtx = World.worldToTileX(p.x), gty = World.worldToTileY(p.z);
         if (w.in(gtx, gty)) {
@@ -146,11 +214,11 @@ export function buildCustomCoaster(game, ride) {
           const hgt = p.y - 0.28 - ground;
           if (hgt > 0.3) {
             if (hgt > 1.6) {
-              b.post(p.x - 0.5, ground, p.z, 0.09, hgt, COL.wood, 1);
-              b.post(p.x + 0.5, ground, p.z, 0.09, hgt, COL.wood, 1);
-              b.bar([p.x - 0.58, ground + hgt - 0.15, p.z], [p.x + 0.58, ground + hgt - 0.15, p.z], 0.12, 0.1, COL.wood, 0.95);
+              b.post(p.x - 0.5, ground, p.z, 0.09, hgt, style.supportCol, 1);
+              b.post(p.x + 0.5, ground, p.z, 0.09, hgt, style.supportCol, 1);
+              b.bar([p.x - 0.58, ground + hgt - 0.15, p.z], [p.x + 0.58, ground + hgt - 0.15, p.z], 0.12, 0.1, style.supportCol, 0.95);
             } else {
-              b.post(p.x, ground, p.z, 0.1, hgt, COL.wood, 1);
+              b.post(p.x, ground, p.z, 0.1, hgt, style.supportCol, 1);
             }
           }
         }
@@ -164,8 +232,8 @@ export function buildCustomCoaster(game, ride) {
       b.box(c.x, py - 0.04, c.z, TILE * 0.96, 0.12, TILE * 0.96, 0xb0a890, 1);
       const dx = World.DX[pc.dir], dy = World.DY[pc.dir];
       const sx = -dy, sz = dx;   // 站台侧面
-      b.post(c.x + sx * 0.8, py, c.z + sz * 0.8, 0.08, 1.7, COL.wood, 1);
-      b.box(c.x + sx * 0.7, py + 1.85, c.z + sz * 0.7, Math.abs(dx) * TILE * 0.9 + 0.6, 0.12, Math.abs(dy) * TILE * 0.9 + 0.6, 0x4273b8, 1);
+      b.post(c.x + sx * 0.8, py, c.z + sz * 0.8, 0.08, 1.7, style.supportCol, 1);
+      b.box(c.x + sx * 0.7, py + 1.85, c.z + sz * 0.7, Math.abs(dx) * TILE * 0.9 + 0.6, 0.12, Math.abs(dy) * TILE * 0.9 + 0.6, style.canopyCol, 1);
     }
     trackMesh = new THREE.Mesh(b.build(), mat);
     group.add(trackMesh);
@@ -190,12 +258,12 @@ export function buildCustomCoaster(game, ride) {
     }
   }
 
-  const CAR_GAP = 1.25, G = 10.5;
+  const G = 10.5;
   let lapArmed = false;
 
   function poseCar(car, sArc) {
     const M = S.pts.length;
-    // 弧长 → 采样索引(步长近似均匀,直接换算+局部修正)
+    // 弧长 → 采样索引(步长近似均匀,直接换算)
     const avg = S.total / M;
     let i = ((Math.round(sArc / avg) % M) + M) % M;
     const p = S.pts[i], q = S.pts[(i + 1) % M];
@@ -225,21 +293,25 @@ export function buildCustomCoaster(game, ride) {
       const i = ((Math.floor(state.s) % M) + M) % M;
       const m = S.meta[i];
       const y = S.pts[i].y;
-      if (m === 'lift') {
-        state.v = 2.0;
-        const now = game.time || 0;   // 链条咔嗒声
-        if (game.audio && now - (ride._clackAt ?? -9) > 0.38) { ride._clackAt = now; game.audio.play('clack'); }
-      }
-      else if (m === 'brake') state.v += (1.6 - state.v) * Math.min(1, dt * 3);
-      else if (m === 'station') state.v = Math.max(state.v, 1.5);   // 站台链条推进
-      else {
-        const target = Math.max(1.2, Math.sqrt(Math.max(0, 2 * G * (S.hMax - y))) * 0.95);
-        state.v += (target - state.v) * Math.min(1, dt * 2.2);
+      if (style.physics === 'cruise') {
+        state.v += (style.cruiseV - state.v) * Math.min(1, dt * 3);
+      } else {
+        if (m === 'lift') {
+          state.v = style.liftV;
+          const now = game.time || 0;   // 链条咔嗒声
+          if (game.audio && now - (ride._clackAt ?? -9) > 0.38) { ride._clackAt = now; game.audio.play('clack'); }
+        }
+        else if (m === 'brake') state.v += (1.6 - state.v) * Math.min(1, dt * 3);
+        else if (m === 'station') state.v = Math.max(state.v, 1.5);   // 站台链条推进
+        else {
+          const target = Math.max(style.minV, Math.sqrt(Math.max(0, 2 * G * (S.hMax - y))) * style.gravityScale);
+          state.v += (target - state.v) * Math.min(1, dt * 2.2);
+        }
       }
       // 推进(采样索引 → 弧长)
       state.s += state.v * dt / (S.segLen[i] || 0.3);
       // 俯冲尖叫:高速 + 前方明显下降(节流 4s)
-      if (game.audio && state.v > 5) {
+      if (game.audio && state.v > style.screamV) {
         const i2 = ((Math.floor(state.s) % M) + M) % M;
         const now = game.time || 0;
         if (S.pts[(i2 + 3) % M].y - S.pts[i2].y < -0.4 && now - (ride._screamAt ?? -9) > 4) {
@@ -261,9 +333,9 @@ export function buildCustomCoaster(game, ride) {
         }
       }
     }
+    const avg = S.total / S.pts.length;
     cars.forEach((car, ci) => {
-      const avg = S.total / S.pts.length;
-      const sArc = state.s * avg - ci * CAR_GAP;
+      const sArc = state.s * avg - ci * style.carGap;
       poseCar(car, ((sArc % S.total) + S.total) % S.total);
     });
   }
@@ -278,10 +350,13 @@ export function buildCustomCoaster(game, ride) {
     setExternal: (s, mode) => { external = { s, mode }; },
     serialize: () => ({ s: state.s, mode: state.mode }),
     restore: (d) => { if (d) { state.s = d.s || 0; state.mode = d.mode || 'load'; } },
-    // 游客落点:每节车厢 2 人(绝对世界坐标)
+    // 游客落点:每节车厢/船 perCar 人(绝对世界坐标)
     riderPos(i, out) {
-      const car = cars[Math.min(3, i >> 1)];
-      out.x = car.position.x + (i & 1 ? 0.16 : -0.16); out.y = car.position.y + 0.42; out.z = car.position.z;
+      const car = cars[Math.min(style.cars - 1, (i / style.perCar) | 0)];
+      const k = i % style.perCar;
+      out.x = car.position.x + (k & 1 ? 0.16 : -0.16);
+      out.y = car.position.y + 0.42;
+      out.z = car.position.z + (k > 1 ? 0.3 : 0);
     },
   };
 }

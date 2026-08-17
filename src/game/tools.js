@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { TILE, H_UNIT, PATH, ADDON, PRICE } from '../config.js';
 import { GeomBuilder } from '../render/geom.js';
 import { World } from '../world/world.js';
+import { DEF_BY_ID } from './rides.js';
 
 export class Tools {
   constructor(game) {
@@ -119,7 +120,7 @@ export class Tools {
       this._do({ type: 'scenery', id: t.id, x: p.x, y: p.y }, e, drag);
     } else if (t.type === 'ride' || t.type === 'shop') {
       if (drag) return;  // 设施不支持拖动
-      if (t.id === 'mycoaster') {
+      if (DEF_BY_ID[t.id]?.custom) {
         this._do({ type: 'coasterBegin', id: t.id, x: p.x, y: p.y, dir: g.ui?.panels?.coasterDir ?? 1 }, e, false, true);
       } else {
         this._do({ type: 'ridePlace', id: t.id, x: p.x, y: p.y }, e, false, true);
@@ -208,12 +209,13 @@ export class Tools {
       const chk = g.scenery.canPlace(t.id, p.x, p.y);
       valid = chk.ok; if (!valid) text = chk.reason;
     } else if (t.type === 'ride' || t.type === 'shop') {
-      if (t.id === 'mycoaster') {   // 定制过山车:单格光标,校验站台落点
+      if (DEF_BY_ID[t.id]?.custom) {   // 定制轨道设施:单格光标,校验站台落点
         tiles = [[p.x, p.y]];
         const chk2 = g.rides.canBeginCustom(p.x, p.y);
         valid = chk2.ok;
         text = valid ? `点击放置站台(朝向:${['东', '北', '西', '南'][g.ui?.panels?.coasterDir ?? 1]},编辑器可改)` : chk2.reason;
-        if (valid && g.research && !g.research.unlocked('woodie')) { valid = false; text = '尚未研发过山车'; }
+        const need = t.id === 'mycoaster' ? 'woodie' : t.id;
+        if (valid && g.research && !g.research.unlocked(need)) { valid = false; text = '尚未研发该设施'; }
       } else {
         const chk = g.rides.validate(t.id, p.x, p.y);
         valid = chk.ok;

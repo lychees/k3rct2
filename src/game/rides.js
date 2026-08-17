@@ -4,7 +4,8 @@ import { TILE, H_UNIT, COL, WATER_H, PATH, MAP_W, MAP_H } from '../config.js';
 import { GeomBuilder } from '../render/geom.js';
 import { World } from '../world/world.js';
 import { buildCoaster, coasterGhostGeometry } from './coaster.js';
-import { buildCustomCoaster, COASTER_PIECES, PIECE_BY_ID, MAX_LEVEL, MAX_PIECES, exitOf, canFinish } from './coasterEdit.js';
+import { mulberry32 } from '../core/random.js';
+import { buildCustomCoaster, COASTER_PIECES, PIECE_BY_ID, MAX_LEVEL, MAX_PIECES, TRACK_STYLES, exitOf, canFinish } from './coasterEdit.js';
 
 // ---------------- 设施定义 ----------------
 export const RIDE_DEFS = [
@@ -33,6 +34,18 @@ export const RIDE_DEFS = [
     desc: '轨道编辑器:站台起逐段铺设,闭环即成你自己的过山车',
     w: 1, h: 1, cost: 0, upkeep: 110, capacity: 8, duration: 0,
     basePrice: 6, excitement: 55, intensity: 50, nausea: 32,
+  },
+  {
+    id: 'train', name: '观光小火车', kind: 'coaster', cat: 'ride', custom: true, style: 'train',
+    desc: '轨道编辑器:平轨与弯道绕园,慢速观光巡游',
+    w: 1, h: 1, cost: 0, upkeep: 80, capacity: 8, duration: 0,
+    basePrice: 3, excitement: 40, intensity: 18, nausea: 8,
+  },
+  {
+    id: 'flume', name: '激流勇进', kind: 'coaster', cat: 'ride', custom: true, style: 'flume',
+    desc: '轨道编辑器:水槽漂流 + 俯冲溅浪',
+    w: 1, h: 1, cost: 0, upkeep: 90, capacity: 8, duration: 0,
+    basePrice: 4.5, excitement: 55, intensity: 45, nausea: 20,
   },
   {
     id: 'burger', name: '汉堡店', kind: 'shop', cat: 'shop', desc: '游客饿了会来买', sells: 'food',
@@ -683,6 +696,7 @@ export class Rides {
     this.mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
     this.list = [];          // placed rides
     this.nextId = 1;
+    this._rng = mulberry32(20240815);   // 故障/尖叫随机(函数):固定种子,联机服务端权威,仿真测试可复现
   }
 
   defs() { return RIDE_DEFS; }
@@ -908,10 +922,12 @@ export class Rides {
     if (w.minH(x, y) < WATER_H) return { ok: false, reason: '水下不能建造' };
     return { ok: true };
   }
-  beginCustom(x, y, dir = 1, forcedId = null) {
+  beginCustom(defId, x, y, dir = 1, forcedId = null) {
+    const def = DEF_BY_ID[defId];
+    if (!def || !def.custom) return { ok: false, reason: '未知设施' };
     const chk = this.canBeginCustom(x, y);
     if (!chk.ok) return chk;
-    const def = DEF_BY_ID.mycoaster;
+    const style = TRACK_STYLES[def.style || 'coaster'];
     const w = this.game.world;
     const ride = {
       id: forcedId ?? this.nextId++, def, x, y,
@@ -933,7 +949,7 @@ export class Rides {
     this._buildVisuals(ride);
     this.list.push(ride);
     this.computeQueueCells(ride);
-    return { ok: true, cost: PIECE_BY_ID.station.cost, ride };
+    return { ok: true, cost: style.stationCost, ride };
   }
   // 轨道头 = 最后一段的出口(下一段的入口 tile/方向/高度)
   headOf(ride) { return exitOf(ride.pieces[ride.pieces.length - 1]); }
@@ -942,6 +958,8 @@ export class Rides {
     const def = PIECE_BY_ID[type];
     if (!def) return { ok: false, reason: '未知轨道件' };
     if (!ride.custom || ride.complete) return { ok: false, reason: '已建成,不能再加段' };
+    const style = TRACK_STYLES[ride.def.style || 'coaster'];
+    if (!style.pieces.includes(type)) return { ok: false, reason: '该设施不支持这种轨道件' };
     if (ride.pieces.length >= MAX_PIECES) return { ok: false, reason: '轨道已达长度上限' };
     const e = this.headOf(ride);
     const h = e.h;                                   // 新段入口高度
@@ -994,16 +1012,28 @@ export class Rides {
     if (ride.complete) return { ok: false, reason: '已建成' };
     if (!canFinish(ride)) return { ok: false, reason: '轨道还没接回站台,无法闭环' };
     ride.complete = true;
-    // 由轨道形态估算属性:落差/弯数/长度
+    // 由轨道形态估算属性:落差/弯数/长度(按风格定公式)
     let drops = 0, turns = 0;
     for (const pc of ride.pieces) {
       const d = PIECE_BY_ID[pc.t].dH || 0;
       if (d < 0) drops += -d;
       if (PIECE_BY_ID[pc.t].turn) turns++;
     }
-    ride.excitement = Math.min(90, 42 + drops * 5 + turns * 2 + Math.floor(ride.pieces.length / 8));
-    ride.intensity = Math.min(92, 45 + drops * 6 + Math.floor(ride.pieces.length / 10));
-    ride.nausea = Math.min(70, 30 + turns * 2);
+    const len = ride.pieces.length;
+    const st = ride.def.style || 'coaster';
+    if (st === 'train') {
+      ride.excitement = Math.min(62, 30 + turns + Math.floor(len / 6));
+      ride.intensity = Math.min(25, 14 + Math.floor(len / 20));
+      ride.nausea = 8;
+    } else if (st === 'flume') {
+      ride.excitement = Math.min(82, 45 + drops * 6 + Math.floor(len / 8));
+      ride.intensity = Math.min(78, 38 + drops * 7);
+      ride.nausea = Math.min(50, 18 + turns);
+    } else {
+      ride.excitement = Math.min(90, 42 + drops * 5 + turns * 2 + Math.floor(len / 8));
+      ride.intensity = Math.min(92, 45 + drops * 6 + Math.floor(len / 10));
+      ride.nausea = Math.min(70, 30 + turns * 2);
+    }
     ride.api?.rebuild?.();
     this.computeQueueCells(ride);
     return { ok: true, cost: 0 };
@@ -1212,7 +1242,7 @@ export class Rides {
       if (this.game.audio && (ride.def.intensity ?? 0) >= 40 && ride.animSpeed > 0.8 && ride.status === 'open' &&
         (ride.riders.length || this.game.mp)) {
         const now = this.game.time || 0;
-        if (now - (ride._screamAt ?? -9) > 5 && Math.random() < dt * 0.45) {
+        if (now - (ride._screamAt ?? -9) > 5 && this._rng() < dt * 0.45) {
           ride._screamAt = now;
           this.game.audio.play('scream');
         }
@@ -1224,7 +1254,7 @@ export class Rides {
         ride.breakdownT += dt;
         const rel = ride.reliability / 100;
         const p = (1 - rel) * (1 - rel) * 0.12 * dt * (ride.def.intensity > 30 ? 1.5 : 1);
-        if (Math.random() < p) this.breakdown(ride);
+        if (this._rng() < p) this.breakdown(ride);
       }
       if (ride.broken) continue;
       if (ride.def.kind === 'coaster') { this._updateCoaster(ride); continue; }

@@ -219,9 +219,13 @@ export function applyAction(g, a, charge = true) {
       }
       return { ok: true, cost: 0 };
     }
-    case 'coasterBegin': {   // 定制过山车:放站台段,进入建造
-      if (charge && g.research && !g.research.unlocked('woodie')) return fail('尚未研发过山车');
-      const r = g.rides.beginCustom(a.x, a.y, Math.max(0, Math.min(3, Math.round(a.dir ?? 1))), a.rideId);
+    case 'coasterBegin': {   // 定制轨道设施(过山车/小火车/激流勇进):放站台段,进入建造
+      const defId = DEF_BY_ID[a.id]?.custom ? a.id : 'mycoaster';
+      if (charge && g.research) {
+        const need = defId === 'mycoaster' ? 'woodie' : defId;
+        if (!g.research.unlocked(need)) return fail('尚未研发该设施');
+      }
+      const r = g.rides.beginCustom(defId, a.x, a.y, Math.max(0, Math.min(3, Math.round(a.dir ?? 1))), a.rideId);
       if (!r.ok) return fail(r.reason);
       a.rideId = r.ride.id;
       if (charge) eco.trySpend(r.cost, '建设');
@@ -244,7 +248,7 @@ export function applyAction(g, a, charge = true) {
       if (!r.ok) return fail(r.reason);
       if (charge) {
         const ride = g.rides.findRide(a.rideId);
-        g.messages?.add(`过山车闭环建成!兴奋 ${ride.excitement}/强度 ${ride.intensity} —— 设好出入口即可开放`);
+        g.messages?.add(`「${ride.def.name}」闭环建成!兴奋 ${ride.excitement}/强度 ${ride.intensity} —— 设好出入口即可开放`);
       }
       return { ok: true, cost: 0 };
     }
