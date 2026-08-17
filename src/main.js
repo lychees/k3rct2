@@ -17,6 +17,9 @@ import { Tools } from './game/tools.js';
 import { Saves, peekSave, applyWorldData } from './game/save.js';
 import { applyAction } from './game/actions.js';
 import { Research } from './game/research.js';
+import { SCENARIOS, SCENARIO_BY_ID, applyScenario, maxUnlocked } from './game/scenarios.js';
+import { Sfx } from './core/audio.js';
+import { FirstPersonView } from './render/fpview.js';
 import { UI } from './ui/ui.js';
 import { NetClient } from './mp/net.js';
 import { RemotePeeps } from './mp/remotePeeps.js';
@@ -46,12 +49,19 @@ function showStartOverlay() {
     const card = document.createElement('div');
     card.className = 'rct-win';
     card.style.width = '320px';
+    const max = maxUnlocked();
+    const lvOpts = SCENARIOS.map((s, i) =>
+      `<option value="${s.id}" ${i > max ? 'disabled' : ''}>第${i + 1}关 ${s.name}${i > max ? '(未解锁)' : ''}</option>`).join('');
     card.innerHTML = `
       <div class="titlebar"><span>RCT2.js — 过山车大亨复刻</span></div>
       <div class="content" style="display:flex;flex-direction:column;gap:10px">
         <div class="hint" style="font-size:12px">等距视角 · 修路建园 · 接待游客 · 经营收支</div>
         <input id="__nickname" placeholder="昵称(联机用)" maxlength="12"
           style="background:rgba(20,24,34,0.8);border:1px solid rgba(255,255,255,0.25);color:#e8e6d0;padding:6px 8px;border-radius:3px;font-size:13px;outline:none">
+        <select id="__lv" style="background:rgba(20,24,34,0.8);border:1px solid rgba(255,255,255,0.25);color:#e8e6d0;padding:6px 8px;border-radius:3px;font-size:13px;outline:none">
+          <option value="">继续上次进度 / 默认公园</option>
+          ${lvOpts}
+        </select>
         <button class="rct-btn" id="__sp" style="font-size:14px;padding:8px">单人经营</button>
         <button class="rct-btn" id="__mp" style="font-size:14px;padding:8px">多人联机(同一服务器同一座公园)</button>
         <div class="hint" style="font-size:11px">多人:把本页 URL 发给朋友,他们也点"多人联机"即可</div>
@@ -59,7 +69,11 @@ function showStartOverlay() {
     wrap.appendChild(card);
     ui.appendChild(wrap);
     const name = () => (card.querySelector('#__nickname').value.trim() || '玩家' + Math.floor(Math.random() * 900 + 100));
-    card.querySelector('#__sp').addEventListener('click', () => { wrap.remove(); resolve({ mode: 'sp' }); });
+    card.querySelector('#__sp').addEventListener('click', () => {
+      const lv = card.querySelector('#__lv').value;
+      if (lv && peekSave() && !confirm('开始新关卡将覆盖当前存档,继续?')) return;
+      wrap.remove(); resolve({ mode: 'sp', lv });
+    });
     card.querySelector('#__mp').addEventListener('click', () => { wrap.remove(); resolve({ mode: 'mp', name: name() }); });
   });
 }
@@ -88,6 +102,8 @@ function buildGame(world, isMP) {
   game.peeps = isMP ? new RemotePeeps(game) : new Peeps(game);
   game.staff = new Staff(game);
   game.tools = new Tools(game);
+  game.audio = new Sfx();
+  game.fp = new FirstPersonView(game);
   game.ui = new UI(game);
   // 动作分发:单机=本地权威;联机=交给网络层覆盖
   game.dispatchAction = (a) => applyAction(game, a, true);
@@ -106,7 +122,8 @@ function installLoop(game) {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     game.time += dt;
-    game.camera.update(dt);
+    if (game.fp?.active) game.fp.update(dt);       // 第一视角模式接管相机
+    else game.camera.update(dt);
     if (game.mp) {
       game.rides.update(dt);          // 仅动画(队列/收益由服务端管)
       game.peeps.update(dt);          // 远端插值渲染
@@ -123,7 +140,7 @@ function installLoop(game) {
     game.weather.updateVisual(dt, sun, hemi);
     game.terrain.waterTex.offset.x = game.time * 0.02;
     game.terrain.waterTex.offset.y = Math.sin(game.time * 0.4) * 0.015;
-    renderer.render(scene, game.camera.camera);
+    renderer.render(scene, game.fp?.active ? game.fp.camera : game.camera.camera);
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
@@ -141,16 +158,20 @@ document.getElementById('loading').style.display = 'none';
 // ---------- 启动 ----------
 const params = new URLSearchParams(location.search);
 
-async function bootSingle(fromMP = false) {
-  const saveData = peekSave();
+async function bootSingle(fromMP = false, lvId = null) {
+  const sc = SCENARIO_BY_ID[lvId || params.get('lv')] || null;
+  const saveData = sc ? null : peekSave();      // 指定关卡 = 全新开局,不读旧档
   const world = new World();
   if (saveData && !params.get('new')) applyWorldData(world, saveData.world);
-  else generateTerrain(world);
+  else generateTerrain(world, sc?.seed);
   const game = buildGame(world, false);
   game.saves = new Saves(game);
   if (saveData && !params.get('new')) {
     game.saves.apply(saveData);
     game.messages.add('已载入上次的公园');
+  } else if (sc) {
+    game.saves.clear();                          // 清掉旧档,防止下次启动误读
+    applyScenario(game, sc);
   } else {
     game.messages.add('欢迎来到 RCT2.js!修路 → 建设施 → 开放,吸引游客吧');
   }
@@ -240,4 +261,4 @@ function applyFullState(game, welcome) {
 
 if (params.get('mp')) bootMulti(params.get('name') || '玩家' + Math.floor(Math.random() * 900 + 100));
 else if (params.get('sp') || params.get('new')) bootSingle();
-else showStartOverlay().then(c => c.mode === 'mp' ? bootMulti(c.name) : bootSingle());
+else showStartOverlay().then(c => c.mode === 'mp' ? bootMulti(c.name) : bootSingle(false, c.lv));

@@ -56,7 +56,7 @@ export class Staff {
       state: 'wander', targetTile: null, target: null, workT: 0,
       speed: 2.6,
       hidden: false, hasSouvenir: false,
-      shirt: def.shirt, skin: 0xf0c8a0, pants: def.pants, balloonCol: 0,
+      shirt: def.shirt, skin: 0xf0c8a0, pants: def.pants, balloonCol: 0, capCol: 0xf0f0e8,
     };
     const c = w.tileCenter(e.x, e.y);
     s.x = c.x; s.z = c.z;
@@ -360,7 +360,7 @@ export class Staff {
         r = {
           id, role: def.id, x: xi / 100, z: zi / 100, tx: xi / 100, tz: zi / 100,
           yaw: 0, walkT: rand() * 9, hidden: false, hasSouvenir: false,
-          shirt: def.shirt, skin: 0xf0c8a0, pants: def.pants, balloonCol: 0,
+          shirt: def.shirt, skin: 0xf0c8a0, pants: def.pants, balloonCol: 0, capCol: 0xf0f0e8,
           state: 'walk', tile: [0, 0], working: !!working,
         };
         this._snapshotMap.set(id, r);
@@ -473,7 +473,7 @@ export class Staff {
         id: s.id, role: s.role, x: s.x / 100, z: s.z / 100, tile: s.tile, prev: null,
         yaw: 0, walkT: rand() * 9, state: 'wander', targetTile: null, target: null, workT: 0,
         speed: 2.6, hidden: false, hasSouvenir: false,
-        shirt: def.shirt, skin: 0xf0c8a0, pants: def.pants, balloonCol: 0,
+        shirt: def.shirt, skin: 0xf0c8a0, pants: def.pants, balloonCol: 0, capCol: 0xf0f0e8,
       });
       this.nextId = Math.max(this.nextId, s.id + 1);
     }

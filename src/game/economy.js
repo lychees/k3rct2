@@ -1,5 +1,6 @@
 // 经济:现金、收支分类、日期推进(月结)、公园评分。
 import { START_CASH, MONTH_SECONDS, MONTH_NAMES } from '../config.js';
+import { unlockNext } from './scenarios.js';
 
 export class Economy {
   constructor(game) {
@@ -15,6 +16,7 @@ export class Economy {
     this.parkOpen = true;       // 园区开放状态
     this.goal = { won: false, lost: false, guests: 250, rating: 600, deadlineAbs: 15,
       text: '第2年10月结束前:游客 ≥ 250 且评分 ≥ 600' };
+    this._cashSndAt = -999;     // 收银音效节流(时间戳,秒)
     // 当月收支分类
     this.cur = this.blankMonth();
     this.history = [];          // 已结算月份
@@ -40,6 +42,11 @@ export class Economy {
     if (this.cur[cat] === undefined) this.cur[cat] = 0;
     this.cur[cat] += amount;
     this._emit('change');
+    // 收银声:游客消费类收入才响,节流避免密集叮叮
+    if (amount > 0 && (cat === '设施' || cat === '商店' || cat === '门票')) {
+      const now = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+      if (now - this._cashSndAt > 0.3) { this._cashSndAt = now; this.game.audio?.play('cash'); }
+    }
   }
   trySpend(amount, cat) {   // 建造类消费:返回 false 表示钱不够(不允许负债建)
     if (this.cash - amount < -5000) return false;
@@ -87,12 +94,17 @@ export class Economy {
     if (go.won || go.lost) return;
     const monthAbs = (this.year - 1) * MONTH_NAMES.length + this.monthIdx;   // 当前月(已推进后)
     const guests = g.peeps ? g.peeps.list.length : 0;
-    if (guests >= go.guests && this.parkRating >= go.rating) {
+    const cashOk = !go.cash || this.cash >= go.cash;   // 现金类关卡需额外达标
+    if (guests >= go.guests && this.parkRating >= go.rating && cashOk) {
       go.won = true;
-      g.messages?.add(`达成目标!游客 ${guests}、评分 ${Math.round(this.parkRating)} —— 干得漂亮!`);
+      const unlock = go.scenarioId ? unlockNext(go.scenarioId) : '';
+      g.messages?.add(`达成目标!游客 ${guests}、评分 ${Math.round(this.parkRating)}` +
+        (go.cash ? `、现金 ${this.fmt(this.cash)}` : '') + (unlock ? ' ' + unlock : '') + ' —— 干得漂亮!');
+      g.audio?.play('win');
     } else if (monthAbs > go.deadlineAbs) {
       go.lost = true;
       g.messages?.add(`未能按期完成目标(${go.text}),园区继续经营,再接再厉`);
+      g.audio?.play('lose');
     }
   }
 

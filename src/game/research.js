@@ -60,6 +60,7 @@ export class Research {
       this.done.push(cur.id);
       this.queueIdx++;
       this.game.messages?.add(`研发完成:「${cur.name}」现在可以建造了!`);
+      this.game.audio?.play('fanfare');
       const next = this.current();
       if (next) this.game.messages?.add(`开始研发:${next.name}`);
       this.game.economy?._emit?.('change');

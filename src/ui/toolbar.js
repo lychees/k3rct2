@@ -84,6 +84,24 @@ const ICONS = {
     L(g, 6.4, 9, 11.6, 9, '#fff', 1.8);
   }),
   pause: () => mkIcon(g => { P(g, 7, 4, 3.2, 14, '#e8e6d0'); P(g, 12.2, 4, 3.2, 14, '#e8e6d0'); }),
+  dev: () => mkIcon(g => {
+    P(g, 2, 4, 18, 14, '#161a24');
+    g.fillStyle = '#7ec850'; g.font = 'bold 10px monospace'; g.textAlign = 'left';
+    g.fillText('>$_', 4, 15);
+  }),
+  trophy: () => mkIcon(g => {
+    P(g, 7, 4, 8, 7, '#e8b830');                       // 杯身
+    L(g, 7, 5, 3, 7, '#e8b830', 2); L(g, 15, 5, 19, 7, '#e8b830', 2);  // 双耳
+    P(g, 10, 11, 2, 4, '#c09a28');                     // 杯柄
+    P(g, 6, 15, 10, 3, '#e8b830');                     // 底座
+  }),
+  snd: () => mkIcon(g => {
+    P(g, 4, 9, 3, 6, '#e8e6d0');                       // 喇叭
+    g.fillStyle = '#e8e6d0'; g.beginPath(); g.moveTo(7, 9); g.lineTo(13, 4); g.lineTo(13, 19); g.lineTo(7, 15); g.fill();
+    g.strokeStyle = '#7ec850'; g.lineWidth = 1.6;
+    g.beginPath(); g.arc(13, 12, 4, -0.9, 0.9); g.stroke();
+    g.beginPath(); g.arc(13, 12, 7, -0.8, 0.8); g.stroke();
+  }),
 };
 
 export class Toolbar {
@@ -101,7 +119,7 @@ export class Toolbar {
     b.title = tip;
     b.dataset.tb = id;
     if (icon) b.appendChild(icon);
-    b.addEventListener('click', onclick);
+    b.addEventListener('click', (ev) => { this.game.audio?.play('click'); onclick(ev); });
     this.buttons.set(id, b);
     this.el.appendChild(b);
     return b;
@@ -121,9 +139,15 @@ export class Toolbar {
     this._add('staff', ICONS.staff(), '员工(清洁工/维修工/演艺)', () => g.ui.panels.open('staff'));
     this._add('research', ICONS.research(), '研发', () => g.ui.panels.open('research'));
     this._add('park', ICONS.gate(), '公园信息', () => g.ui.panels.open('park'));
+    this._add('levels', ICONS.trophy(), '关卡', () => g.ui.panels.open('levels'));
+    this._add('cheat', ICONS.dev(), '开发者控制台', () => g.ui.panels.open('cheat'));
     const sp = document.createElement('div');
     sp.className = 'spacer';
     this.el.appendChild(sp);
+    this._add('snd', ICONS.snd(), '音效开/关', () => {
+      if (g.audio) g.audio.toggleMute();
+      this.refresh();
+    });
     this._add('pause', ICONS.pause(), '暂停', () => {
       g.dispatchAction({ type: 'pause', value: !g.paused });
       this.refresh();
@@ -142,5 +166,7 @@ export class Toolbar {
     for (const [id, b] of this.buttons) b.classList.remove('active');
     if (t && map[t]) this.buttons.get(map[t])?.classList.add('active');
     if (this.game.paused) this.buttons.get('pause').classList.add('active');
+    const sb = this.buttons.get('snd');
+    if (sb && this.game.audio) sb.style.opacity = this.game.audio.muted ? '0.35' : '1';
   }
 }

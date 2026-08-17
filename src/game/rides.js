@@ -100,14 +100,15 @@ function buildCarousel(ride, mat) {
   stat.post(cx, 3.0, cz, 0.14, 0.5, 0xe8b830, 1);                       // 顶饰
   stat.blob(cx, 3.6, cz, 0.25, 0xe8b830, 1.1);
   g.add(meshOf(stat, mat));
-  // 旋转部分
+  // 旋转部分(枢轴放在盘面中心转,几何绕原点构建,否则旋转会飞出基座)
   const spin = new THREE.Group();
+  spin.position.set(cx, 0, cz);
   const dyn = new GeomBuilder();
-  dyn.frustum(cx, 0.28, cz, 2.3, 2.3, 0.14, 0xf0e8d8, 1, 10);           // 台面
-  dyn.post(cx, 0.28, cz, 0.2, 2.2, 0xe8b830, 1);                        // 中柱
+  dyn.frustum(0, 0.28, 0, 2.3, 2.3, 0.14, 0xf0e8d8, 1, 10);           // 台面
+  dyn.post(0, 0.28, 0, 0.2, 2.2, 0xe8b830, 1);                        // 中柱
   for (let i = 0; i < 8; i++) {
     const a = i / 8 * Math.PI * 2;
-    const px = cx + Math.cos(a) * 1.55, pz = cz + Math.sin(a) * 1.55;
+    const px = Math.cos(a) * 1.55, pz = Math.sin(a) * 1.55;
     dyn.post(px, 0.42, pz, 0.045, 1.5, 0xc8c8d0, 1);                    // 马杆
     const col = [0xffffff, 0xd84a3a, 0x3a7ad8, 0xe8b830][i % 4];
     dyn.box(px, 0.72, pz, 0.5, 0.3, 0.26, col, 1);                      // 木马

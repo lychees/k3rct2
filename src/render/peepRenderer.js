@@ -22,7 +22,8 @@ export class PeepRenderer {
     this.mBalloon = new THREE.InstancedMesh(new THREE.SphereGeometry(0.16, 6, 5),
       new THREE.MeshLambertMaterial({ emissive: 0x331111 }), cap);
     this.mUmbrella = new THREE.InstancedMesh(new THREE.ConeGeometry(0.46, 0.24, 6), lam(), cap);
-    this.parts = [this.mBody, this.mHead, this.mHair, this.mLegL, this.mLegR, this.mBalloon, this.mUmbrella];
+    this.mCap = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 0.11, 0.3), lam(), cap);   // 员工帽(按岗位色)
+    this.parts = [this.mBody, this.mHead, this.mHair, this.mLegL, this.mLegR, this.mBalloon, this.mUmbrella, this.mCap];
     for (const m of this.parts) {
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       m.frustumCulled = false;
@@ -41,7 +42,7 @@ export class PeepRenderer {
     return y;
   }
 
-  // list: [{x,z,tile,hidden,yaw,walkT,shirt,skin,pants,hasSouvenir,balloonCol,id,state}]
+  // list: [{x,z,tile,hidden,yaw,walkT,shirt,skin,pants,capCol,hasSouvenir,balloonCol,hasUmbrella,id,state}]
   render(list, dt) {
     const w = this.game.world;
     const zeroM = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -80,6 +81,14 @@ export class PeepRenderer {
       pos.set(p.x - fx * swing - sx * 0.09, gy + 0.16 + (-swing > 0 ? -swing * 0.4 : 0), p.z - fz * swing - szz * 0.09);
       m4.compose(pos, q, scl); this.mLegR.setMatrixAt(i, m4);
       this.mLegR.setColorAt(i, col);
+      // 员工帽(只有员工记录带 capCol,游客永不戴帽 → 一眼区分)
+      if (p.capCol) {
+        pos.set(p.x, gy + 1.26 + bob, p.z); m4.compose(pos, q, scl);
+        this.mCap.setMatrixAt(i, m4);
+        col.setHex(p.capCol); this.mCap.setColorAt(i, col);
+      } else {
+        this.mCap.setMatrixAt(i, zeroM);
+      }
       if (p.hasSouvenir) {
         const bt = performance.now() / 1000;
         pos.set(p.x + sx * 0.3, gy + 1.55 + Math.sin(bt * 2 + p.id) * 0.08, p.z + szz * 0.3);

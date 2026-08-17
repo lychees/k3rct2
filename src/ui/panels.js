@@ -3,6 +3,7 @@ import { PATH, ADDON, PRICE, MAP_W, MAP_H } from '../config.js';
 import { SCENERY_TYPES } from '../game/scenery.js';
 import { RIDE_DEFS, DEF_BY_ID } from '../game/rides.js';
 import { RESEARCH_LEVELS, RESEARCH_QUEUE } from '../game/research.js';
+import { SCENARIOS, maxUnlocked } from '../game/scenarios.js';
 import { STAFF_ROLES } from '../game/staff.js';
 
 const PANEL_POS = {
@@ -10,6 +11,7 @@ const PANEL_POS = {
   peeps: [window.innerWidth - 300, 60], finance: [window.innerWidth - 340, 80],
   park: [window.innerWidth - 320, 100], save: [90, 90], mp: [window.innerWidth - 320, 130],
   research: [230, 120], staff: [window.innerWidth - 360, 60], map: [60, 50],
+  cheat: [window.innerWidth - 360, 140], levels: [270, 140],
 };
 
 export class Panels {
@@ -35,7 +37,7 @@ export class Panels {
     return {
       land: '整地', scenery: '景观', path: '路径', rides: '游乐设施', shops: '商店',
       peeps: '游客', finance: '财务', park: '公园信息', save: '存档', mp: '联机', research: '研发',
-      staff: '员工', map: '园区地图',
+      staff: '员工', map: '园区地图', cheat: '开发者控制台', levels: '关卡',
     }[name] || name;
   }
 
@@ -54,7 +56,7 @@ export class Panels {
     const b = document.createElement('button');
     b.className = 'rct-btn ' + cls;
     b.textContent = text;
-    b.addEventListener('click', onclick);
+    b.addEventListener('click', (ev) => { this.game.audio?.play('click'); onclick(ev); });
     return b;
   }
   _row(el, ...nodes) {
@@ -184,6 +186,10 @@ export class Panels {
     const g = this.game;
     const d = document.createElement('div');
     el.appendChild(d);
+    this._row(el, this._btn('第一视角游览', () => {
+      const ok = g.fp?.enterRandom();
+      if (!ok) g.messages?.add('园里还没有游客,等他们进来再试');
+    }), this._btn('换一位游客视角', () => { g.fp?.enterRandom(true); }));
     const tl = document.createElement('div');
     tl.className = 'rct-list';
     tl.style.maxHeight = '150px';
@@ -344,6 +350,30 @@ export class Panels {
     w.refresh();
   }
 
+  // ---------- 开发者控制台 ----------
+  build_cheat(el, w) {
+    const g = this.game, eco = g.economy;
+    this._hint(el, '作弊工具(调试用,联机下同样生效并广播)');
+    this._row(el, this._btn('印钱 +$10,000', () => {
+      g.dispatchAction({ type: 'cheatMoney', amount: 10000 });
+      w.refresh();
+    }));
+    this._row(el, this._btn('一键完成所有研究', () => {
+      g.dispatchAction({ type: 'researchAll' });
+      w.refresh();
+    }));
+    const d = document.createElement('div');
+    d.className = 'hint';
+    el.appendChild(d);
+    w.refresh = () => {
+      const R = g.research;
+      const done = R ? R.done.length : 0;
+      d.innerHTML = `现金:<b class="money">${eco.fmt(eco.cash)}</b><br>` +
+        `研究:${done}/${RESEARCH_QUEUE.length} ${R && !R.current() ? '(全部完成)' : ''}`;
+    };
+    w.refresh();
+  }
+
   // ---------- 员工 ----------
   build_staff(el, w) {
     const g = this.game;
@@ -442,6 +472,37 @@ export class Panels {
       ctx.strokeRect(cx - vw, cy - vh, vw * 2, vh * 2);
     };
     w.refresh();
+  }
+
+  // ---------- 关卡 ----------
+  build_levels(el, w) {
+    const g = this.game;
+    if (g.mp) { this._hint(el, '联机模式的公园由服务器决定,不含关卡目标。'); return; }
+    const list = document.createElement('div');
+    list.className = 'rct-list';
+    el.appendChild(list);
+    const render = () => {
+      const max = maxUnlocked();
+      list.innerHTML = '';
+      SCENARIOS.forEach((sc, i) => {
+        const locked = i > max;
+        const cur = g.economy.goal?.scenarioId === sc.id;
+        const item = document.createElement('div');
+        item.className = 'rct-item';
+        const tgt = `游客≥${sc.goal.guests} · 评分≥${sc.goal.rating}${sc.goal.cash ? ' · 现金≥$' + sc.goal.cash.toLocaleString('en-US') : ''}`;
+        item.innerHTML = `<span>${i + 1}. ${sc.name}${cur ? ' ✦进行中' : ''}<div class="sub">${sc.desc} · ${tgt}</div></span><span class="price">${locked ? '未解锁' : (cur ? '' : '重开')}</span>`;
+        if (locked) { item.style.opacity = '0.45'; item.style.cursor = 'default'; item.title = '完成前一关后解锁'; }
+        else if (!cur) item.addEventListener('click', () => {
+          if (confirm(`开始关卡「${sc.name}」?当前公园进度将被覆盖`)) {
+            g.saves?.clear();
+            location.href = '?new=1&lv=' + sc.id;
+          }
+        });
+        list.appendChild(item);
+      });
+    };
+    render();
+    w.refresh = render;
   }
 
   // ---------- 存档 ----------

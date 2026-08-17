@@ -4,11 +4,13 @@
 // - 联机客户端:收到广播 → 复现世界变更(charge=false,经济由服务端包覆写)
 import { PATH, ADDON, PRICE, MIN_H, MAX_H } from '../config.js';
 import { SCENERY_BY_ID } from './scenery.js';
+import { RESEARCH_QUEUE } from './research.js';
 
 export const ACTIONS = [
   'land', 'path', 'pathRemove', 'addon', 'addonRemove',
   'scenery', 'sceneryRemove', 'ridePlace', 'rideRemove', 'rideStatus', 'ridePrice', 'rideGate',
   'entranceFee', 'researchLevel', 'staffHire', 'staffFire', 'loanBorrow', 'loanRepay', 'parkOpen', 'pause', 'chat',
+  'cheatMoney', 'researchAll',
 ];
 
 export function applyAction(g, a, charge = true) {
@@ -179,6 +181,38 @@ export function applyAction(g, a, charge = true) {
       if (!g.staff) return fail('无员工系统');
       const r = g.staff.fire(a.id);
       if (!r.ok) return fail(r.reason || '员工不存在');
+      return { ok: true, cost: 0 };
+    }
+    case 'cheatMoney': {   // 开发者控制台:印钱(直接进现金,不计收支流水)
+      const amount = Math.max(1, Math.min(1000000, Math.round(a.amount || 10000)));
+      if (charge) {
+        eco.cash += amount;
+        a.amount = amount;
+        a.cash = eco.cash;
+        eco._emit('change');
+        g.messages?.add(`${a.by ? a.by + ' ' : ''}开发者控制台:印钞 ${eco.fmt(amount)}`);
+      } else {
+        eco.cash = a.cash ?? eco.cash;
+        eco._emit('change');
+      }
+      return { ok: true, cost: 0 };
+    }
+    case 'researchAll': {  // 开发者控制台:一键完成所有研究
+      if (!g.research) return fail('无研发系统');
+      if (charge) {
+        g.research.done = RESEARCH_QUEUE.map(q => q.id);
+        g.research.queueIdx = RESEARCH_QUEUE.length;
+        g.research.progress = 0;
+        a.done = g.research.done.slice();
+        a.queueIdx = g.research.queueIdx;
+        eco._emit('change');
+        g.messages?.add(`${a.by ? a.by + ' ' : ''}开发者控制台:全部研究已完成`);
+      } else {
+        g.research.done = a.done || RESEARCH_QUEUE.map(q => q.id);
+        g.research.queueIdx = a.queueIdx ?? g.research.done.length;
+        g.research.progress = 0;
+        eco._emit('change');
+      }
       return { ok: true, cost: 0 };
     }
   }

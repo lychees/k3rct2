@@ -2,6 +2,7 @@
 import { MAP_W, MAP_H } from '../config.js';
 
 const KEY = 'rct2js-save-v1';
+export { KEY as SAVE_KEY };   // 开新关卡时用于清档
 
 export function encU8(a) {
   let s = '';
@@ -76,6 +77,7 @@ export class Saves {
         totalGuests: g.economy.totalGuests, history: g.economy.history,
         loan: g.economy.loan, parkOpen: g.economy.parkOpen,
         weatherMode: g.weather?.mode || 'sun', goalWon: g.economy.goal.won, goalLost: g.economy.goal.lost,
+        goal: { ...g.economy.goal },
       },
     };
     try {
@@ -109,6 +111,7 @@ export class Saves {
       loan: e.loan ?? 0, parkOpen: e.parkOpen ?? true,
     });
     if (e.weatherMode && g.weather) g.weather.mode = e.weatherMode;
+    if (e.goal) Object.assign(g.economy.goal, e.goal);   // 含关卡 scenarioId/现金目标等
     if (g.economy.goal) { g.economy.goal.won = !!e.goalWon; g.economy.goal.lost = !!e.goalLost; }
     if (data.research) g.research?.restore(data.research);
     if (data.staffArea) g.staff?.restoreArea(data.staffArea);

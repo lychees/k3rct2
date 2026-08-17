@@ -58,7 +58,7 @@ export class Tools {
     this.hover = p;
     this._updateCursor(e);
     // 按住左键拖动:路径/整地/景观连续作业
-    if (this.mouse.down && p && this.tool) {
+    if (this.mouse.down && p && this.tool && !this.game.fp?.active) {
       const t = this.tool.type;
       if (t === 'path' || t === 'scenery') this._applyAt(p, e, true);
       else if (t === 'land') this._applyLand(p, e, true);
@@ -67,6 +67,7 @@ export class Tools {
   }
 
   _onApply(e) {
+    if (this.game.fp?.active) return;   // 第一视角下左键用于环视
     const p = this._pick(e);
     if (!p) return;
     // 无工具时:左键点击设施 → 打开设施窗口
@@ -115,10 +116,11 @@ export class Tools {
   notifyResult(a, r, e, drag) {
     const g = this.game;
     if (!r || !r.ok) {
-      if (!drag && r && r.reason) this._flash(r.reason, e || this.mouse, true);
+      if (!drag && r && r.reason) { this._flash(r.reason, e || this.mouse, true); g.audio?.play('error'); }
       return;
     }
     if (r.pending) return;   // 联机:等服务端回执
+    if (!drag) g.audio?.play(r.cost < 0 ? 'remove' : 'place');
     if (r.cost > 0 && !drag) this._flash('-' + g.economy.fmt(r.cost), e || this.mouse);
     else if (r.cost < 0 && !drag) this._flash('+' + g.economy.fmt(-r.cost), e || this.mouse);
     if (a.type === 'ridePlace' || a.type === 'rideGate') { this.clearTool(); this._clearCursor(); g.ui?.refreshToolbar?.(); }
