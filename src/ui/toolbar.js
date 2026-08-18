@@ -84,6 +84,11 @@ const ICONS = {
     L(g, 6.4, 9, 11.6, 9, '#fff', 1.8);
   }),
   pause: () => mkIcon(g => { P(g, 7, 4, 3.2, 14, '#e8e6d0'); P(g, 12.2, 4, 3.2, 14, '#e8e6d0'); }),
+  ff: () => mkIcon(g => {
+    g.fillStyle = '#e8e6d0';
+    g.beginPath(); g.moveTo(3, 5); g.lineTo(11, 11); g.lineTo(3, 17); g.fill();
+    g.beginPath(); g.moveTo(11, 5); g.lineTo(19, 11); g.lineTo(11, 17); g.fill();
+  }),
   dev: () => mkIcon(g => {
     P(g, 2, 4, 18, 14, '#161a24');
     g.fillStyle = '#7ec850'; g.font = 'bold 10px monospace'; g.textAlign = 'left';
@@ -160,6 +165,13 @@ export class Toolbar {
       g.dispatchAction({ type: 'pause', value: !g.paused });
       this.refresh();
     });
+    this._add('speed', ICONS.ff(), '游戏速度 1×(点击切换)', () => {
+      if (g.mp) { g.messages.add('联机模式速度由服务器控制'); return; }
+      g.speedMul = g.speedMul === 1 ? 2 : g.speedMul === 2 ? 4 : 1;
+      this.buttons.get('speed').title = `游戏速度 ${g.speedMul}×(点击切换)`;
+      g.messages.add(`游戏速度 ${g.speedMul}×`);
+      this.refresh();
+    });
     this._add('zoomOut', ICONS.zoomOut(), '缩小', () => g.camera.setZoom(g.camera.zoomIdx - 1));
     this._add('zoomIn', ICONS.zoomIn(), '放大', () => g.camera.setZoom(g.camera.zoomIdx + 1));
     this._add('rotate', ICONS.rotate(), '旋转视角 (E)', () => g.camera.rotate(1));
@@ -174,6 +186,8 @@ export class Toolbar {
     for (const [id, b] of this.buttons) b.classList.remove('active');
     if (t && map[t]) this.buttons.get(map[t])?.classList.add('active');
     if (this.game.paused) this.buttons.get('pause').classList.add('active');
+    const spb = this.buttons.get('speed');
+    if (spb) spb.classList.toggle('active', (this.game.speedMul || 1) > 1);
     const sb = this.buttons.get('snd');
     if (sb && this.game.audio) sb.style.opacity = this.game.audio.muted ? '0.35' : '1';
   }

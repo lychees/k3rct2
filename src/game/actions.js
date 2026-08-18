@@ -113,7 +113,7 @@ export function applyAction(g, a, charge = true) {
       }
       if (a.status === 'open' && ride.def.custom && !ride.complete) return fail('轨道尚未闭环,不能开放');
       ride.status = a.status;
-      if (charge) g.messages?.add(`「${ride.def.name}」已${{ closed: '关闭', test: '测试', open: '开放' }[a.status]}${a.by ? '(' + a.by + ')' : ''}`);
+      if (charge) g.messages?.add(`「${ride.def.name}」已${{ closed: '关闭', test: '测试', open: '开放' }[a.status]}${a.by ? '(' + a.by + ')' : ''}`, ride.id);
       return { ok: true, cost: 0 };
     }
     case 'rideRemove': {
@@ -123,7 +123,7 @@ export function applyAction(g, a, charge = true) {
       if (!r.ok) return fail(r.reason || '');
       if (charge) {
         eco.earn(-r.cost, '建设');
-        g.messages?.add(`${a.by ? a.by + ' ' : ''}拆除了「${ride.def.name}」,返还 ${eco.fmt(-r.cost)}`);
+        g.messages?.add(`${a.by ? a.by + ' ' : ''}拆除了「${ride.def.name}」,返还 ${eco.fmt(-r.cost)}`, ride.id);
       }
       return { ok: true, cost: r.cost };
     }

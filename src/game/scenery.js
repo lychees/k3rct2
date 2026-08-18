@@ -12,6 +12,8 @@ export const SCENERY_TYPES = [
   { id: 'birch', name: '白桦', price: PRICE.tree + 2, obj: 1, leaf: 0x86b83c, build: buildBirch },
   { id: 'bush', name: '灌木', price: PRICE.bush, obj: 2, leaf: 0x3d8a30, build: buildBush },
   { id: 'flower', name: '花丛', price: PRICE.flower, obj: 3, leaf: 0xffffff, build: buildFlower },
+  { id: 'fountain', name: '喷泉', price: 60, obj: 4, leaf: 0xffffff, build: buildFountain },
+  { id: 'statue', name: '雕像', price: 80, obj: 5, leaf: 0xffffff, build: buildStatue },
 ];
 export const SCENERY_BY_ID = Object.fromEntries(SCENERY_TYPES.map(t => [t.id, t]));
 
@@ -47,6 +49,19 @@ function buildFlower(b) {
     b.tri([x - s, y, z], [x + s, y, z], [x, y, z + s * 1.6], [[0, 0], [0, 0], [0, 0]], c.getHex(), 1.2);
     b.tri([x, y, z - s * 1.4], [x - s, y, z], [x + s, y, z], [[0, 0], [0, 0], [0, 0]], c.getHex(), 1.2);
   });
+}
+
+function buildFountain(b) {
+  b.frustum(0, 0.05, 0, 0.75, 0.65, 0.3, 0xb8c0c8, 1, 8);        // 石盆
+  b.frustum(0, 0.3, 0, 0.55, 0.5, 0.1, 0x4a8ac8, 1, 8);          // 水面
+  b.post(0, 0.3, 0, 0.07, 0.55, 0x9aa2a8, 1);                    // 中柱
+  b.frustum(0, 0.85, 0, 0.3, 0.02, 0.3, 0x88c8e8, 0.9, 6);       // 顶部水碟
+}
+function buildStatue(b) {
+  b.box(0, 0.15, 0, 0.6, 0.3, 0.6, 0x8a8d8f, 1);                  // 基座
+  b.post(0, 0.3, 0, 0.14, 0.75, 0xc8a848, 1);                     // 身
+  b.blob(0, 1.18, 0, 0.16, 0xd8b858, 1.05);                       // 头
+  b.bar([-0.3, 0.95, 0], [0.3, 0.95, 0], 0.1, 0.1, 0xc8a848, 1);  // 展臂
 }
 
 export class Scenery {
@@ -137,7 +152,7 @@ export class Scenery {
     const rec = this.types.get(id);
     if (!rec) return;
     if (rec.mesh) { this.group.remove(rec.mesh); rec.mesh.dispose(); rec.mesh = null; }
-    if (!rec.items.length) return;
+    if (!rec.items.length) { if (id === 'fountain') this._rebuildJets(rec); return; }
     const mesh = new THREE.InstancedMesh(rec.geom, this.mat, rec.items.length);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
     const pos = new THREE.Vector3(), scl = new THREE.Vector3();
@@ -156,6 +171,29 @@ export class Scenery {
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     this.group.add(mesh);
     rec.mesh = mesh;
+    if (id === 'fountain') this._rebuildJets(rec);
+  }
+
+  // 喷泉水柱(独立小网格,主循环 updateAnims 驱动)
+  _rebuildJets(rec) {
+    if (this._jets) for (const j of this._jets) { this.group.remove(j.mesh); j.mesh.geometry.dispose(); j.mesh.material.dispose(); }
+    this._jets = [];
+    for (const it of rec.items) {
+      const c = this.world.tileCenter(it.x, it.y);
+      const m = new THREE.Mesh(
+        new THREE.ConeGeometry(0.16, 0.8, 6),
+        new THREE.MeshBasicMaterial({ color: 0xaad8f0, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
+      m.position.set(c.x, this.world.surfaceY(it.x, it.y) + 1.15, c.z);
+      this.group.add(m);
+      this._jets.push({ mesh: m, seed: it.x * 13 + it.y * 7 });
+    }
+  }
+  updateAnims(t) {
+    if (!this._jets) return;
+    for (const j of this._jets) {
+      j.mesh.scale.set(1, 1 + Math.sin(t * 3 + j.seed) * 0.22, 1);
+      j.mesh.material.opacity = 0.45 + 0.2 * Math.sin(t * 3.7 + j.seed);
+    }
   }
 
   // 幽灵预览用:克隆几何

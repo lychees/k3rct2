@@ -285,7 +285,7 @@ export class Staff {
       if (ride.broken) {
         ride.broken = false;
         ride.reliability = Math.min(96, ride.reliability + 18);
-        g.messages?.add(`「${ride.def.name}」已修好,恢复运营`);
+        g.messages?.add(`「${ride.def.name}」已修好,恢复运营`, ride.id);
         g.economy?._emit?.('change');
       } else {
         ride.reliability = Math.min(98, ride.reliability + 10);

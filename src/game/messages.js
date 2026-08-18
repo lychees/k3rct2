@@ -1,13 +1,13 @@
-// 滚动消息:进入列表,状态栏滚动显示。
+// 滚动消息:进入列表,状态栏滚动显示。可带 rideId(点击跳到设施窗口)。
 export class Messages {
   constructor() {
     this.list = [];
     this.onAdd = null;
   }
-  add(text) {
-    this.list.push({ text, t: Date.now(), read: false });
+  add(text, rideId = null) {
+    this.list.push({ text, rideId, t: Date.now(), read: false });
     if (this.list.length > 40) this.list.shift();
-    this.onAdd?.(text);
+    this.onAdd?.(text, rideId);
   }
   latest() {
     return this.list.length ? this.list[this.list.length - 1].text : '';

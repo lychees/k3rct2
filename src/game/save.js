@@ -1,8 +1,17 @@
-// 存档:localStorage 序列化整个世界状态;启动时可自动载入。
+// 存档:localStorage 序列化整个世界状态;启动时可自动载入。3 个存档位。
 import { MAP_W, MAP_H } from '../config.js';
 
 const KEY = 'rct2js-save-v1';
 export { KEY as SAVE_KEY };   // 开新关卡时用于清档
+const slotKey = (s) => `${KEY}-s${s}`;
+
+export function currentSlot() {
+  try { return Math.max(1, Math.min(3, parseInt(localStorage.getItem('rct2js-slot') || '1', 10) || 1)); }
+  catch { return 1; }
+}
+export function setCurrentSlot(s) {
+  try { localStorage.setItem('rct2js-slot', String(s)); } catch { /* 忽略 */ }
+}
 
 export function encU8(a) {
   let s = '';
@@ -25,9 +34,10 @@ export function decI16(s, n) {
   return out;
 }
 
-export function peekSave() {
+export function peekSave(slot = currentSlot()) {
   try {
-    const raw = localStorage.getItem(KEY);
+    // 旧版单存档兼容:1 号位直接读旧 KEY
+    const raw = localStorage.getItem(slotKey(slot)) || (slot === 1 ? localStorage.getItem(KEY) : null);
     if (!raw) return null;
     const d = JSON.parse(raw);
     if (d && d.v === 1 && d.world) return d;
@@ -38,14 +48,20 @@ export function peekSave() {
 export class Saves {
   constructor(game) {
     this.game = game;
+    this.slot = currentSlot();
     game.economy.on('month', () => {
       this._monthCount = (this._monthCount || 0) + 1;
       if (this._monthCount % 2 === 0) this.save();
     });
   }
 
-  hasSave() { return !!peekSave(); }
-  clear() { localStorage.removeItem(KEY); }
+  hasSave() { return !!peekSave(this.slot); }
+  clear() {
+    try {
+      localStorage.removeItem(slotKey(this.slot));
+      if (this.slot === 1) localStorage.removeItem(KEY);   // 旧版单存档一并清
+    } catch { /* 忽略 */ }
+  }
 
   save() {
     const g = this.game, w = g.world;
@@ -89,7 +105,7 @@ export class Saves {
       },
     };
     try {
-      localStorage.setItem(KEY, JSON.stringify(data));
+      localStorage.setItem(slotKey(this.slot), JSON.stringify(data));
     } catch { /* 容量满则放弃本次 */ }
   }
 

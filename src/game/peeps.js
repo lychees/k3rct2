@@ -336,7 +336,7 @@ export class Peeps {
     peep.hunger = Math.min(1, peep.hunger + 0.1);
     if (ride.price <= ex * 8) peep.happiness = Math.min(1, peep.happiness + 0.05);
     else peep.happiness = Math.max(0.1, peep.happiness - 0.08);
-    if (rand() < 0.12) this.game.messages?.add(`游客 #${peep.id}:「${ride.def.name}太好玩了!」`);
+    if (rand() < 0.12) this.game.messages?.add(`游客 #${peep.id}:「${ride.def.name}太好玩了!」`, ride.id);
   }
   serveAtShop(peep, ride) {
     this.game.rides.charge(ride, peep);

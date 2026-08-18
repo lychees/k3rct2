@@ -9,7 +9,22 @@ export class Statusbar {
     this.ticker.className = 'ticker';
     this.el.append(this.date, this.cash, this.guests, this.rating, this.ticker);
     root.appendChild(this.el);
-    game.messages.onAdd = (t) => { this.ticker.textContent = t; };
+    game.messages.onAdd = (t, rideId) => {
+      this.ticker.textContent = '';
+      if (rideId != null) {   // 可点击:跳到设施窗口
+        const a = document.createElement('a');
+        a.href = '#';
+        a.textContent = t;
+        a.style.color = '#9fd0ff';
+        a.addEventListener('click', ev => {
+          ev.preventDefault();
+          game.ui?.rideWindow?.(rideId);
+        });
+        this.ticker.appendChild(a);
+      } else {
+        this.ticker.textContent = t;
+      }
+    };
     function cell() { const d = document.createElement('div'); d.className = 'cell'; return d; }
   }
   update() {

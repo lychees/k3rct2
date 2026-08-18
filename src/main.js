@@ -23,6 +23,7 @@ import { FirstPersonView } from './render/fpview.js';
 import { UI } from './ui/ui.js';
 import { NetClient } from './mp/net.js';
 import { RemotePeeps } from './mp/remotePeeps.js';
+import { ADDON, MAP_W, MAP_H, H_UNIT } from './config.js';
 
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -122,29 +123,80 @@ function installLoop(game) {
   function tick(now) {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
+    const simDt = game.mp ? dt : dt * (game.speedMul || 1);   // 单机可调速(联机服务器权威)
     game.time += dt;
     if (game.fp?.active) game.fp.update(dt);       // 第一视角模式接管相机
     else game.camera.update(dt);
     if (game.mp) {
-      game.rides.update(dt);          // 仅动画(队列/收益由服务端管)
-      game.peeps.update(dt);          // 远端插值渲染
-      game.staff.update(dt);          // 远端插值渲染
+      game.rides.update(simDt);         // 仅动画(队列/收益由服务端管)
+      game.peeps.update(simDt);         // 远端插值渲染
+      game.staff.update(simDt);         // 远端插值渲染
     } else if (!game.paused) {
-      game.economy.update(dt);
-      game.rides.update(dt);
-      game.peeps.update(dt);
-      game.staff.update(dt);
+      game.economy.update(simDt);
+      game.rides.update(simDt);
+      game.peeps.update(simDt);
+      game.staff.update(simDt);
     } else {
-      game.staff.update(dt);          // 暂停时垃圾/员工渲染帧仍需要
+      game.staff.update(simDt);         // 暂停时垃圾/员工渲染帧仍需要
     }
     game.ui.update(dt);
     game.weather.updateVisual(dt, sun, hemi);
+    updateNight(game, sun, hemi);
+    game.scenery.updateAnims?.(game.time);   // 喷泉水柱等装饰动画
     game.terrain.waterTex.offset.x = game.time * 0.02;
     game.terrain.waterTex.offset.y = Math.sin(game.time * 0.4) * 0.015;
     renderer.render(scene, game.fp?.active ? game.fp.camera : game.camera.camera);
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
+}
+
+// ---------- 昼夜循环:180s 一轮(120s 白天 + 60s 夜,各 15s 过渡),路灯光点夜间亮起 ----------
+const DAY_LEN = 180, NIGHT_START = 120, DUSK = 15;
+let lampPts = null, lampCount = -1;
+const _bgDay = new THREE.Color(0x0e1a2e), _bgNight = new THREE.Color(0x04060d);
+function nightFactor(t) {
+  const c = t % DAY_LEN;
+  if (c < NIGHT_START) return 0;
+  if (c < NIGHT_START + DUSK) return (c - NIGHT_START) / DUSK;
+  if (c < DAY_LEN - DUSK) return 1;
+  return (DAY_LEN - c) / DUSK;
+}
+function updateNight(game, sun, hemi) {
+  const nf = nightFactor(game.time);
+  if (nf <= 0 && !lampPts) return;
+  sun.intensity = sun.intensity * (1 - nf * 0.82) + 0.015 * nf;   // 在天气结果上叠加夜色
+  hemi.intensity = hemi.intensity * (1 - nf * 0.7);
+  scene.background.copy(_bgDay).lerp(_bgNight, nf);
+  // 路灯光点(每 ~90 帧扫一次 addon 数组)
+  game._lampScanT = (game._lampScanT || 0) - 1;
+  if (game._lampScanT > 0) { if (lampPts) lampPts.material.opacity = nf * 0.9; return; }
+  game._lampScanT = 90;
+  const w = game.world;
+  const lamps = [];
+  for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+    if (w.addon[w.idx(x, y)] === ADDON.LAMP) lamps.push([x, y]);
+  }
+  if (lamps.length !== lampCount) {   // 数量变了重建点云
+    lampCount = lamps.length;
+    if (lampPts) { scene.remove(lampPts); lampPts.geometry.dispose(); lampPts = null; }
+    if (lamps.length) {
+      const pos = new Float32Array(lamps.length * 3);
+      lamps.forEach(([x, y], i) => {
+        const c = w.tileCenter(x, y);
+        const top = Math.max(...w.corners(x, y)) * H_UNIT + 0.035;
+        pos[i * 3] = c.x; pos[i * 3 + 1] = top + 1.42; pos[i * 3 + 2] = c.z;
+      });
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      lampPts = new THREE.Points(geo, new THREE.PointsMaterial({
+        color: 0xffc868, size: 7, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: false,
+      }));
+      scene.add(lampPts);
+    }
+  }
+  if (lampPts) lampPts.material.opacity = nf * 0.9;
 }
 
 function resize() {

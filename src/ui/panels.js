@@ -5,6 +5,7 @@ import { RIDE_DEFS, DEF_BY_ID } from '../game/rides.js';
 import { RESEARCH_LEVELS, RESEARCH_QUEUE } from '../game/research.js';
 import { SCENARIOS, maxUnlocked } from '../game/scenarios.js';
 import { ACH_DEFS } from '../game/achievements.js';
+import { peekSave, currentSlot, setCurrentSlot } from '../game/save.js';
 import { COASTER_PIECES, TRACK_STYLES, canFinish } from '../game/coasterEdit.js';
 import { STAFF_ROLES } from '../game/staff.js';
 
@@ -694,16 +695,38 @@ export class Panels {
     const info = document.createElement('div');
     info.className = 'hint';
     el.appendChild(info);
+    const slotLabels = {};
+    for (const n of [1, 2, 3]) {
+      const row = document.createElement('div');
+      row.className = 'rct-row';
+      const label = document.createElement('span');
+      label.style.cssText = 'flex:1;font-size:11px;align-self:center';
+      const saveB = this._btn('保存', () => {
+        g.saves.slot = n; setCurrentSlot(n);
+        g.saves.save();
+        this.game.messages.add(`已保存到 ${n} 号位`);
+        refreshInfo();
+      }, 'small');
+      const loadB = this._btn('读取', () => {
+        if (!peekSave(n)) { info.textContent = `${n} 号位是空的`; return; }
+        g.saves.slot = n; setCurrentSlot(n);
+        g.saves.load();   // reload 后启动流程自动读当前档
+      }, 'small');
+      row.append(label, saveB, loadB);
+      el.appendChild(row);
+      slotLabels[n] = label;
+    }
     const refreshInfo = () => {
-      const has = g.saves?.hasSave?.();
-      info.textContent = has ? '检测到一个存档' : '暂无存档';
+      for (const n of [1, 2, 3]) {
+        const d = peekSave(n);
+        const cur = currentSlot() === n ? ' ✦当前' : '';
+        slotLabels[n].textContent = d
+          ? `${n}号位:第${d.economy?.year ?? 1}年 · ${(d.rides || []).length} 设施${cur}`
+          : `${n}号位:空${cur}`;
+      }
+      info.textContent = '自动每 2 个游戏月保存到当前档位;切换档位后「读取」生效。';
     };
     refreshInfo();
-    this._row(el,
-      this._btn('保存', () => { g.saves.save(); refreshInfo(); this.game.messages.add('已保存'); }),
-      this._btn('读取', () => { if (g.saves.hasSave()) g.saves.load(); else info.textContent = '暂无存档可读取'; }),
-      this._btn('新的公园', () => { if (confirm('放弃当前进度,生成新地图?')) { g.saves.clear(); location.reload(); } }),
-    );
-    this._hint(el, '自动每 2 个月(游戏内)保存一次。');
+    this._row(el, this._btn('新的公园', () => { if (confirm('放弃当前进度,生成新地图?')) { g.saves.clear(); location.reload(); } }));
   }
 }

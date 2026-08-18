@@ -1745,7 +1745,7 @@ export class Rides {
     ride.riders.length = 0;
     if (ride.api?.boats) for (const bt of ride.api.boats) { bt.riders.length = 0; bt.state = 'dock'; }   // 脚踏船清船
     for (const q of (ride.queues || [ride.queue])) for (const p of [...q]) this.game.peeps.releaseFromQueue(p);   // 故障清队
-    this.game.messages?.add(`「${ride.def.name}」故障了!需要维修工`);
+    this.game.messages?.add(`「${ride.def.name}」故障了!需要维修工`, ride.id);
     this.game.economy?._emit?.('change');
   }
 
