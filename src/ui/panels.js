@@ -1,9 +1,9 @@
 // 各类建造/管理面板:整地、景观、路径、设施、商店、游客、财务、公园、存档。
-import { PATH, ADDON, PRICE, MAP_W, MAP_H } from '../config.js';
+import { PATH, ADDON, PRICE, MAP_W, MAP_H, MONTH_NAMES } from '../config.js';
 import { SCENERY_TYPES } from '../game/scenery.js';
 import { RIDE_DEFS, DEF_BY_ID } from '../game/rides.js';
 import { RESEARCH_LEVELS, RESEARCH_QUEUE } from '../game/research.js';
-import { SCENARIOS, maxUnlocked } from '../game/scenarios.js';
+import { SCENARIOS, maxUnlocked, getTrophies, MEDALS } from '../game/scenarios.js';
 import { ACH_DEFS } from '../game/achievements.js';
 import { peekSave, currentSlot, setCurrentSlot } from '../game/save.js';
 import { COASTER_PIECES, TRACK_STYLES, canFinish, findClosure } from '../game/coasterEdit.js';
@@ -543,7 +543,11 @@ export class Panels {
         const item = document.createElement('div');
         item.className = 'rct-item';
         const tgt = `游客≥${sc.goal.guests} · 评分≥${sc.goal.rating}${sc.goal.cash ? ' · 现金≥$' + sc.goal.cash.toLocaleString('en-US') : ''}`;
-        item.innerHTML = `<span>${i + 1}. ${sc.name}${cur ? ' ✦进行中' : ''}<div class="sub">${sc.desc} · ${tgt}</div></span><span class="price">${locked ? '未解锁' : (cur ? '' : '重开')}</span>`;
+        const tro = getTrophies()[sc.id];
+        const medalTxt = tro
+          ? ` <span style="color:${['#c8895a', '#c8c8d8', '#e8b830'][tro.medal]}">${MEDALS[tro.medal]}牌 · 第${Math.floor(tro.monthAbs / MONTH_NAMES.length) + 1}年${MONTH_NAMES[tro.monthAbs % MONTH_NAMES.length]}达成</span>`
+          : '';
+        item.innerHTML = `<span>${i + 1}. ${sc.name}${cur ? ' ✦进行中' : ''}${medalTxt}<div class="sub">${sc.desc} · ${tgt}</div></span><span class="price">${locked ? '未解锁' : (cur ? '' : '重开')}</span>`;
         if (locked) { item.style.opacity = '0.45'; item.style.cursor = 'default'; item.title = '完成前一关后解锁'; }
         else if (!cur) item.addEventListener('click', () => {
           if (confirm(`开始关卡「${sc.name}」?当前公园进度将被覆盖`)) {
@@ -782,8 +786,10 @@ export class Panels {
       }));
     }
     w.refresh = () => {
+      const tro = go.scenarioId ? getTrophies()[go.scenarioId] : null;
+      const troLine = tro ? `<br>奖杯:<b style="color:${['#c8895a', '#c8c8d8', '#e8b830'][tro.medal]}">${MEDALS[tro.medal]}牌</b>` : '';
       d.innerHTML = go.won
-        ? `<b class="pos">目标达成!</b><br>游客 ${g.peeps.list.length} · 评分 ${Math.round(g.economy.parkRating)}<br>干得漂亮!可以继续经营,也可以挑战下一关。`
+        ? `<b class="pos">目标达成!</b><br>游客 ${g.peeps.list.length} · 评分 ${Math.round(g.economy.parkRating)}${troLine}<br>干得漂亮!可以继续经营,也可以挑战下一关。`
         : `<b class="neg">未能在期限内完成目标</b><br><span class="hint">${go.text}</span><br>公园仍可继续经营,或重开本关再试。`;
     };
     w.refresh();

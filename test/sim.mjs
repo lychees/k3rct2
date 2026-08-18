@@ -12,7 +12,7 @@ import { Economy } from '../src/game/economy.js';
 import { Messages } from '../src/game/messages.js';
 import { Research, RESEARCH_QUEUE } from '../src/game/research.js';
 import { applyAction } from '../src/game/actions.js';
-import { SCENARIOS, applyScenario, unlockNext } from '../src/game/scenarios.js';
+import { SCENARIOS, applyScenario, unlockNext, recordTrophy } from '../src/game/scenarios.js';
 import { canFinish, findClosure } from '../src/game/coasterEdit.js';
 import { checkAchievements } from '../src/game/achievements.js';
 import { Sfx } from '../src/core/audio.js';
@@ -153,6 +153,10 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
   game.economy.checkGoal(game);
   assertT(game.economy.goal.won, '现金类关卡:游客+评分+现金均达标即判定通关');
   assertT(unlockNext('meadow').includes('已解锁'), '通关后解锁下一关提示');
+  // 奖杯:按完成早晚分级
+  assertT(recordTrophy('meadow', 3, 7).medal === 2, '奖杯:提前完成得金牌');
+  assertT(recordTrophy('meadow', 5, 7).medal === 1, '奖杯:中程完成得银牌');
+  assertT(recordTrophy('meadow', 7, 7).medal === 0, '奖杯:压线完成得铜牌');
 }
 
 // 定制轨道设施:扫描平地 → 逐段铺轨 → 闭环 → 测试模式跑一整圈(过山车/小火车/激流勇进三种风格)

@@ -33,6 +33,16 @@ export const SCENARIOS = [
     seed: 313371, startCash: 15000,
     goal: { guests: 500, rating: 800, deadlineAbs: 31 },    // 第4年10月末
   },
+  {
+    id: 'twinlakes', name: '双湖鏖战', desc: '湖面分割用地,资金紧凑',
+    seed: 60606, startCash: 11000,
+    goal: { guests: 420, rating: 720, deadlineAbs: 27 },
+  },
+  {
+    id: 'legend', name: '传奇乐园', desc: '终极考验:游客与现金双高峰',
+    seed: 888888, startCash: 16000,
+    goal: { guests: 600, rating: 850, cash: 50000, deadlineAbs: 39 },   // 第5年10月末
+  },
 ];
 export const SCENARIO_BY_ID = Object.fromEntries(SCENARIOS.map(s => [s.id, s]));
 
@@ -69,4 +79,25 @@ export function unlockNext(scenarioId) {
   if (maxUnlocked() >= i + 1) return '';
   try { localStorage.setItem(LKEY, String(i + 1)); } catch { /* 无存储环境则本次不持久化 */ }
   return `已解锁新关卡:「${SCENARIOS[i + 1].name}」(开始页或关卡面板可选)`;
+}
+
+// ---------- 奖杯(金银铜牌:按提前完成的程度) ----------
+export const MEDALS = ['铜', '银', '金'];
+const TKEY = 'rct2js-trophies';
+export function getTrophies() {
+  try { return JSON.parse(localStorage.getItem(TKEY) || '{}'); } catch { return {}; }
+}
+// 通关时记录;返回 {medal: 0|1|2, improved} 或 null(非关卡)
+export function recordTrophy(scenarioId, monthAbs, deadlineAbs) {
+  if (!scenarioId || deadlineAbs <= 0) return null;
+  const ratio = monthAbs / deadlineAbs;                 // 完成得越早牌级越高
+  const medal = ratio <= 0.55 ? 2 : ratio <= 0.8 ? 1 : 0;
+  const all = getTrophies();
+  const prev = all[scenarioId];
+  const improved = !prev || medal > prev.medal || (medal === prev.medal && monthAbs < prev.monthAbs);
+  if (improved) {
+    all[scenarioId] = { medal, monthAbs };
+    try { localStorage.setItem(TKEY, JSON.stringify(all)); } catch { /* 忽略 */ }
+  }
+  return { medal, improved };
 }

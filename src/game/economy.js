@@ -1,6 +1,6 @@
 // 经济:现金、收支分类、日期推进(月结)、公园评分。
 import { START_CASH, MONTH_SECONDS, MONTH_NAMES } from '../config.js';
-import { unlockNext } from './scenarios.js';
+import { unlockNext, recordTrophy, MEDALS } from './scenarios.js';
 
 export class Economy {
   constructor(game) {
@@ -112,8 +112,13 @@ export class Economy {
     if (guests >= go.guests && this.parkRating >= go.rating && cashOk) {
       go.won = true;
       const unlock = go.scenarioId ? unlockNext(go.scenarioId) : '';
+      let trophyMsg = '';
+      if (go.scenarioId) {
+        const tr = recordTrophy(go.scenarioId, monthAbs, go.deadlineAbs);
+        if (tr) trophyMsg = ` 获得${MEDALS[tr.medal]}奖杯!`;
+      }
       g.messages?.add(`达成目标!游客 ${guests}、评分 ${Math.round(this.parkRating)}` +
-        (go.cash ? `、现金 ${this.fmt(this.cash)}` : '') + (unlock ? ' ' + unlock : '') + ' —— 干得漂亮!');
+        (go.cash ? `、现金 ${this.fmt(this.cash)}` : '') + trophyMsg + (unlock ? ' ' + unlock : '') + ' —— 干得漂亮!');
       g.audio?.play('win');
       g.ui?.panels?.open('gameover');
     } else if (monthAbs > go.deadlineAbs) {
