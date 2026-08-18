@@ -143,7 +143,9 @@ export function applyAction(g, a, charge = true) {
     case 'ridePaint': {
       const ride = g.rides.findRide(a.rideId);
       if (!ride) return fail('设施不存在');
-      ride.paint = Math.max(0, Math.min(0xffffff, Math.round(a.color ?? 0xffffff)));
+      const col = Math.max(0, Math.min(0xffffff, Math.round(a.color ?? 0)));
+      if (a.slot === 'sub') ride.paintSub = a.reset ? null : col;
+      else ride.paintMain = a.reset ? null : col;
       g.rides.applyPaint(ride);
       return { ok: true, cost: 0 };
     }

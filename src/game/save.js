@@ -82,7 +82,7 @@ export class Saves {
         id: r.id, defId: r.def.id, x: r.x, y: r.y, status: r.status, price: r.price,
         guestsServed: r.guestsServed, incomeTotal: r.incomeTotal,
         reliability: r.reliability, broken: r.broken,
-        name: r.customName || null, paint: r.paint ?? null, age: r.ageMonths || 0,
+        name: r.customName || null, paintMain: r.paintMain ?? null, paintSub: r.paintSub ?? null, age: r.ageMonths || 0,
         coaster: r.api?.serialize ? r.api.serialize() : null,
         ...(r.custom || r.cableB ? {
           custom: r.custom ? 1 : 0, complete: r.complete ? 1 : 0,

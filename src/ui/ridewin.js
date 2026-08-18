@@ -1,4 +1,5 @@
-// 单个设施窗口:开关/测试状态、票价、统计、定位、拆除。
+// 单个设施窗口:开关/测试状态、票价、统计、定位、拆除、改名、主/副涂装。
+import { DEFAULT_PAINT } from '../render/paintSlots.js';
 const STATUS = [
   ['closed', '关闭'], ['test', '测试'], ['open', '开放'],
 ];
@@ -64,31 +65,40 @@ export function openRideWindow(game, wm, rideId) {
       el.appendChild(nameRow);
       const paintRow = document.createElement('div');
       paintRow.className = 'rct-row';
-      paintRow.appendChild(document.createTextNode('涂装:'));
-      const picker = document.createElement('input');
-      picker.type = 'color';
-      picker.value = '#' + (ride.paint ?? 0xffffff).toString(16).padStart(6, '0');
-      picker.title = '任意颜色(真彩色)';
-      picker.style.cssText = 'width:44px;height:22px;padding:0;border:1px solid rgba(255,255,255,0.35);background:none;cursor:pointer';
-      picker.addEventListener('input', () => {   // 拖动时本地即时预览
-        const v = parseInt(picker.value.slice(1), 16);
-        ride.paint = v;
-        game.rides.applyPaint(ride);
-      });
-      picker.addEventListener('change', () => {   // 选定后走动作层(联机广播/存档)
-        game.dispatchAction({ type: 'ridePaint', rideId: ride.id, color: parseInt(picker.value.slice(1), 16) });
-        game.audio?.play('click');
-      });
+      const [dMain, dSub] = DEFAULT_PAINT[ride.def.id] || [0x707070, 0xa0a0a0];
+      const mkPicker = (label, slot, defCol) => {
+        paintRow.appendChild(document.createTextNode(label));
+        const p = document.createElement('input');
+        p.type = 'color';
+        p.value = '#' + (slot === 'sub' ? (ride.paintSub ?? defCol) : (ride.paintMain ?? defCol)).toString(16).padStart(6, '0');
+        p.title = label.replace(':', '') + '(任意颜色)';
+        p.style.cssText = 'width:38px;height:22px;padding:0;border:1px solid rgba(255,255,255,0.35);background:none;cursor:pointer';
+        p.addEventListener('input', () => {   // 拖动时本地即时预览
+          const v = parseInt(p.value.slice(1), 16);
+          if (slot === 'sub') ride.paintSub = v; else ride.paintMain = v;
+          game.rides.applyPaint(ride);
+        });
+        p.addEventListener('change', () => {   // 选定后走动作层(联机广播/存档)
+          game.dispatchAction({ type: 'ridePaint', rideId: ride.id, slot, color: parseInt(p.value.slice(1), 16) });
+          game.audio?.play('click');
+        });
+        paintRow.appendChild(p);
+        return p;
+      };
+      const pMain = mkPicker('主色:', 'main', dMain);
+      const pSub = mkPicker('副色:', 'sub', dSub);
       const defBtn = document.createElement('button');
       defBtn.className = 'rct-btn small';
       defBtn.textContent = '默认';
       defBtn.title = '恢复默认配色';
       defBtn.addEventListener('click', () => {
-        picker.value = '#ffffff';
-        game.dispatchAction({ type: 'ridePaint', rideId: ride.id, color: 0xffffff });
+        game.dispatchAction({ type: 'ridePaint', rideId: ride.id, slot: 'main', reset: true });
+        game.dispatchAction({ type: 'ridePaint', rideId: ride.id, slot: 'sub', reset: true });
+        pMain.value = '#' + dMain.toString(16).padStart(6, '0');
+        pSub.value = '#' + dSub.toString(16).padStart(6, '0');
         game.audio?.play('click');
       });
-      paintRow.append(picker, defBtn);
+      paintRow.appendChild(defBtn);
       el.appendChild(paintRow);
       const stats = document.createElement('div');
       stats.className = 'hint';

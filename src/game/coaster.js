@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { TILE, H_UNIT, COL } from '../config.js';
 import { GeomBuilder } from '../render/geom.js';
+import { meshOf, SLOT_MAIN, SLOT_SUB } from '../render/paintSlots.js';
 import { World } from '../world/world.js';
 
 // 轨道关键点(相对足迹 anchor 的 tile 坐标,h 为相对站台的高度层级)
@@ -41,10 +42,10 @@ export function buildCoaster(game, ride) {
     const nl = Math.hypot(nx, nz) || 1;
     const ox = nx / nl * 0.34, oz = nz / nl * 0.34;
     // 左右钢轨
-    b.bar([p.x - ox, p.y + 0.1, p.z - oz], [q.x - ox, q.y + 0.1, q.z - oz], 0.09, 0.09, COL.railTrack, 1);
-    b.bar([p.x + ox, p.y + 0.1, p.z + oz], [q.x + ox, q.y + 0.1, q.z + oz], 0.09, 0.09, COL.railTrack, 1);
+    b.bar([p.x - ox, p.y + 0.1, p.z - oz], [q.x - ox, q.y + 0.1, q.z - oz], 0.09, 0.09, SLOT_MAIN, 1);
+    b.bar([p.x + ox, p.y + 0.1, p.z + oz], [q.x + ox, q.y + 0.1, q.z + oz], 0.09, 0.09, SLOT_MAIN, 1);
     // 木脊梁
-    b.bar([p.x, p.y - 0.22, p.z], [q.x, q.y - 0.22, q.z], 0.34, 0.2, COL.woodDark, 1);
+    b.bar([p.x, p.y - 0.22, p.z], [q.x, q.y - 0.22, q.z], 0.34, 0.2, SLOT_SUB, 1);
   }
   // 枕木 + 支架(每 ~1.3 单位)
   const stepT = 1.3 / LEN;
@@ -55,7 +56,7 @@ export function buildCoaster(game, ride) {
     const nl = Math.hypot(nx, nz) || 1;
     const ox = nx / nl, oz = nz / nl;
     b.bar([p.x - ox * 0.55, p.y - 0.02, p.z - oz * 0.55], [p.x + ox * 0.55, p.y - 0.02, p.z + oz * 0.55],
-      0.14, 0.07, COL.wood, 1);
+      0.14, 0.07, SLOT_SUB, 1);
   }
   // 支架:每 ~2.6 单位一根立柱到地面;高支架加侧撑
   const stepS = 2.6 / LEN;
@@ -68,14 +69,14 @@ export function buildCoaster(game, ride) {
     if (hgt < 0.3) continue;
     if (hgt > 1.6) {
       // A 形双柱 + 横梁
-      b.post(p.x - 0.55, ground, p.z, 0.09, hgt, COL.wood, 1);
-      b.post(p.x + 0.55, ground, p.z, 0.09, hgt, COL.wood, 1);
-      b.bar([p.x - 0.62, ground + hgt - 0.15, p.z], [p.x + 0.62, ground + hgt - 0.15, p.z], 0.12, 0.1, COL.wood, 0.95);
+      b.post(p.x - 0.55, ground, p.z, 0.09, hgt, SLOT_SUB, 1);
+      b.post(p.x + 0.55, ground, p.z, 0.09, hgt, SLOT_SUB, 1);
+      b.bar([p.x - 0.62, ground + hgt - 0.15, p.z], [p.x + 0.62, ground + hgt - 0.15, p.z], 0.12, 0.1, SLOT_SUB, 0.95);
       if (hgt > 2.8) {
-        b.bar([p.x - 0.55, ground + hgt * 0.5, p.z], [p.x + 0.55, ground + hgt * 0.5, p.z], 0.1, 0.08, COL.wood, 0.9);
+        b.bar([p.x - 0.55, ground + hgt * 0.5, p.z], [p.x + 0.55, ground + hgt * 0.5, p.z], 0.1, 0.08, SLOT_SUB, 0.9);
       }
     } else {
-      b.post(p.x, ground, p.z, 0.1, hgt, COL.wood, 1);
+      b.post(p.x, ground, p.z, 0.1, hgt, SLOT_SUB, 1);
     }
   }
   // 提升坡链条(t 范围约 0.06..0.16)
@@ -88,13 +89,13 @@ export function buildCoaster(game, ride) {
   b.box(ax + 3 * TILE, platY + 0.1, az + 1.0 * TILE, 5.6 * TILE - 1.2, 0.22, TILE * 0.9, 0xb0a890, 1);
   // 站台顶棚
   for (const px of [1, 2.6, 4.2, 5.4]) {
-    b.post(ax + px * TILE, platY + 0.2, az + 0.75 * TILE, 0.08, 1.7, COL.wood, 1);
+    b.post(ax + px * TILE, platY + 0.2, az + 0.75 * TILE, 0.08, 1.7, SLOT_SUB, 1);
   }
   b.box(ax + 3 * TILE, platY + 2.0, az + 0.95 * TILE, 5.4 * TILE, 0.14, TILE * 1.1, 0x4273b8, 1);
 
   const group = new THREE.Group();
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
-  const track = new THREE.Mesh(b.build(), mat);
+  const track = meshOf(b, mat, ride);
   group.add(track);
 
   // 列车:4 节小车
@@ -105,6 +106,7 @@ export function buildCoaster(game, ride) {
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.42, 1.1),
       new THREE.MeshLambertMaterial({ color: carCols[i] }));
     body.position.y = 0.32;
+    body.userData.carBody = true; body.userData.carCol = carCols[i];
     const nose = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.18, 0.4),
       new THREE.MeshLambertMaterial({ color: 0x222228 }));
     nose.position.set(0, 0.2, 0.62);

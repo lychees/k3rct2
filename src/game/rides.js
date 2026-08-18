@@ -56,32 +56,32 @@ export const RIDE_DEFS = [
   {
     id: 'burger', name: '汉堡店', kind: 'shop', cat: 'shop', desc: '游客饿了会来买', sells: 'food',
     w: 1, h: 1, cost: 350, upkeep: 15, capacity: 3, duration: 2.5,
-    basePrice: 4.5, excitement: 0, intensity: 0, nausea: 8, build: (r, m) => buildStall(r, m, 0xd8a038, 0xa03028, '堡'),
+    basePrice: 4.5, excitement: 0, intensity: 0, nausea: 8, build: (r, m) => buildStall(r, m, '堡'),
   },
   {
     id: 'drinks', name: '饮料店', kind: 'shop', cat: 'shop', desc: '解渴饮料', sells: 'drink',
     w: 1, h: 1, cost: 320, upkeep: 15, capacity: 3, duration: 2.5,
-    basePrice: 3, excitement: 0, intensity: 0, nausea: 0, build: (r, m) => buildStall(r, m, 0x3a7ad8, 0xd8e8f0, '饮'),
+    basePrice: 3, excitement: 0, intensity: 0, nausea: 0, build: (r, m) => buildStall(r, m, '饮'),
   },
   {
     id: 'balloon', name: '纪念品店', kind: 'shop', cat: 'shop', desc: '气球与纪念品,提升开心度', sells: 'joy',
     w: 1, h: 1, cost: 300, upkeep: 12, capacity: 3, duration: 2.5,
-    basePrice: 4.5, excitement: 0, intensity: 0, nausea: 0, build: (r, m) => buildStall(r, m, 0xc86ad8, 0xf0e0f8, '念'),
+    basePrice: 4.5, excitement: 0, intensity: 0, nausea: 0, build: (r, m) => buildStall(r, m, '念'),
   },
   {
     id: 'coffee', name: '咖啡店', kind: 'shop', cat: 'shop', desc: '提神又开心', sells: 'coffee',
     w: 1, h: 1, cost: 380, upkeep: 15, capacity: 3, duration: 2.5,
-    basePrice: 4, excitement: 0, intensity: 0, nausea: 0, build: (r, m) => buildStall(r, m, 0x8a5a30, 0xe8d8c0, '咖'),
+    basePrice: 4, excitement: 0, intensity: 0, nausea: 0, build: (r, m) => buildStall(r, m, '咖'),
   },
   {
     id: 'toilet', name: '厕所', kind: 'shop', cat: 'shop', desc: '游客内急必来', sells: 'toilet',
     w: 1, h: 1, cost: 320, upkeep: 12, capacity: 3, duration: 2.5,
-    basePrice: 1.5, excitement: 0, intensity: 0, nausea: 0, build: (r, m) => buildStall(r, m, 0x7a8a9a, 0xd8dde0, '厕'),
+    basePrice: 1.5, excitement: 0, intensity: 0, nausea: 0, build: (r, m) => buildStall(r, m, '厕'),
   },
   {
     id: 'umbrella', name: '伞具店', kind: 'shop', cat: 'shop', desc: '下雨天热卖', sells: 'umbrella',
     w: 1, h: 1, cost: 340, upkeep: 12, capacity: 3, duration: 2.5,
-    basePrice: 5, excitement: 0, intensity: 0, nausea: 0, build: (r, m) => buildStall(r, m, 0x3a4a6a, 0xc8d4e8, '伞'),
+    basePrice: 5, excitement: 0, intensity: 0, nausea: 0, build: (r, m) => buildStall(r, m, '伞'),
   },
   {
     id: 'haunted', name: '鬼屋', kind: 'flat', cat: 'ride', desc: '阴森小屋,尖叫连连',
@@ -157,7 +157,7 @@ export const RIDE_DEFS = [
 export const DEF_BY_ID = Object.fromEntries(RIDE_DEFS.map(d => [d.id, d]));
 
 // ---------------- 低多边形构建 ----------------
-function meshOf(builder, mat) { return new THREE.Mesh(builder.build(), mat); }
+import { meshOf, SLOT_MAIN, SLOT_SUB, DEFAULT_PAINT, paintSlots } from '../render/paintSlots.js';
 
 // 读档/无路兜底出入口(绝对 tile 坐标)
 function fallbackGates(def, ax = 0, ay = 0) {
@@ -171,26 +171,26 @@ function buildCarousel(ride, mat) {
   const stat = new GeomBuilder();
   const cx = 1.5 * TILE, cz = 1.5 * TILE;
   stat.frustum(cx, 0, cz, 2.55, 2.45, 0.28, 0xd8d0c0, 1, 10);          // 基座
-  stat.frustum(cx, 2.0, cz, 2.8, 0.12, 1.15, 0xe33d30, 1, 10);         // 顶篷(红)
+  stat.frustum(cx, 2.0, cz, 2.8, 0.12, 1.15, SLOT_MAIN, 1, 10);         // 顶篷(红)
   stat.frustum(cx, 1.95, cz, 2.9, 2.85, 0.14, 0xf0e0b0, 1, 10);        // 顶篷檐
-  stat.post(cx, 3.0, cz, 0.14, 0.5, 0xe8b830, 1);                       // 顶饰
-  stat.blob(cx, 3.6, cz, 0.25, 0xe8b830, 1.1);
-  g.add(meshOf(stat, mat));
+  stat.post(cx, 3.0, cz, 0.14, 0.5, SLOT_SUB, 1);                       // 顶饰
+  stat.blob(cx, 3.6, cz, 0.25, SLOT_SUB, 1.1);
+  g.add(meshOf(stat, mat, ride));
   // 旋转部分(枢轴放在盘面中心转,几何绕原点构建,否则旋转会飞出基座)
   const spin = new THREE.Group();
   spin.position.set(cx, 0, cz);
   const dyn = new GeomBuilder();
   dyn.frustum(0, 0.28, 0, 2.3, 2.3, 0.14, 0xf0e8d8, 1, 10);           // 台面
-  dyn.post(0, 0.28, 0, 0.2, 2.2, 0xe8b830, 1);                        // 中柱
+  dyn.post(0, 0.28, 0, 0.2, 2.2, SLOT_SUB, 1);                        // 中柱
   for (let i = 0; i < 8; i++) {
     const a = i / 8 * Math.PI * 2;
     const px = Math.cos(a) * 1.55, pz = Math.sin(a) * 1.55;
     dyn.post(px, 0.42, pz, 0.045, 1.5, 0xc8c8d0, 1);                    // 马杆
-    const col = [0xffffff, 0xd84a3a, 0x3a7ad8, 0xe8b830][i % 4];
+    const col = [0xffffff, 0xd84a3a, 0x3a7ad8, SLOT_SUB][i % 4];
     dyn.box(px, 0.72, pz, 0.5, 0.3, 0.26, col, 1);                      // 木马
     dyn.box(px, 0.92, pz + 0.16, 0.18, 0.2, 0.18, col, 1.05);
   }
-  spin.add(meshOf(dyn, mat));
+  spin.add(meshOf(dyn, mat, ride));
   g.add(spin);
   return {
     group: g,
@@ -215,11 +215,11 @@ function buildFerris(ride, mat) {
   const cx = 2 * TILE, cy = 2.2, cz = 1 * TILE;   // 轮心
   const R = 1.85;
   // A 字支架(两侧)
-  stat.bar([cx - 0.5, 0, cz - 0.6], [cx - 0.12, cy, cz], 0.14, 0.14, 0xc8c8d0, 1);
-  stat.bar([cx + 0.5, 0, cz - 0.6], [cx + 0.12, cy, cz], 0.14, 0.14, 0xc8c8d0, 1);
-  stat.bar([cx - 0.5, 0, cz + 0.6], [cx - 0.12, cy, cz], 0.14, 0.14, 0xc8c8d0, 1);
-  stat.bar([cx + 0.5, 0, cz + 0.6], [cx + 0.12, cy, cz], 0.14, 0.14, 0xc8c8d0, 1);
-  g.add(meshOf(stat, mat));
+  stat.bar([cx - 0.5, 0, cz - 0.6], [cx - 0.12, cy, cz], 0.14, 0.14, SLOT_SUB, 1);
+  stat.bar([cx + 0.5, 0, cz - 0.6], [cx + 0.12, cy, cz], 0.14, 0.14, SLOT_SUB, 1);
+  stat.bar([cx - 0.5, 0, cz + 0.6], [cx - 0.12, cy, cz], 0.14, 0.14, SLOT_SUB, 1);
+  stat.bar([cx + 0.5, 0, cz + 0.6], [cx + 0.12, cy, cz], 0.14, 0.14, SLOT_SUB, 1);
+  g.add(meshOf(stat, mat, ride));
   // 轮
   const wheelGroup = new THREE.Group();
   wheelGroup.position.set(cx, cy, cz);
@@ -227,20 +227,21 @@ function buildFerris(ride, mat) {
   const SEG = 10;
   for (let i = 0; i < SEG; i++) {
     const a0 = i / SEG * Math.PI * 2, a1 = (i + 1) / SEG * Math.PI * 2;
-    wb.bar([Math.cos(a0) * R, Math.sin(a0) * R, 0], [Math.cos(a1) * R, Math.sin(a1) * R, 0], 0.12, 0.1, 0xe8b830, 1);
+    wb.bar([Math.cos(a0) * R, Math.sin(a0) * R, 0], [Math.cos(a1) * R, Math.sin(a1) * R, 0], 0.12, 0.1, SLOT_MAIN, 1);
   }
   for (let i = 0; i < 5; i++) {
     const a = i / 5 * Math.PI * 2;
-    wb.bar([0, 0, 0], [Math.cos(a) * R, Math.sin(a) * R, 0], 0.07, 0.07, 0xc8c8d0, 0.9);
+    wb.bar([0, 0, 0], [Math.cos(a) * R, Math.sin(a) * R, 0], 0.07, 0.07, SLOT_SUB, 0.9);
   }
   wb.post(0, -0.15, 0, 0.16, 0.3, 0x8a8d8f, 1);
-  wheelGroup.add(meshOf(wb, mat));
+  wheelGroup.add(meshOf(wb, mat, ride));
   // 座舱(Ref,每帧跟随)
   const cabins = [];
-  const cabinCols = [0xd84a3a, 0xe8b830, 0x3a7ad8, 0x48b050, 0xc86ad8, 0xe87a30, 0xd84a3a, 0x3aa8a0];
+  const cabinCols = [0xd84a3a, SLOT_MAIN, 0x3a7ad8, 0x48b050, 0xc86ad8, 0xe87a30, 0xd84a3a, 0x3aa8a0];
   for (let i = 0; i < 8; i++) {
     const cm = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.4, 0.42),
       new THREE.MeshLambertMaterial({ color: cabinCols[i] }));
+    cm.userData.carBody = true; cm.userData.carCol = cabinCols[i];
     g.add(cm);
     cabins.push(cm);
   }
@@ -269,22 +270,23 @@ function buildTwist(ride, mat) {
   const stat = new GeomBuilder();
   const cx = 2 * TILE, cz = 2 * TILE;
   stat.frustum(cx, 0, cz, 2.75, 2.65, 0.22, 0x9aa2a8, 1, 10);
-  g.add(meshOf(stat, mat));
+  g.add(meshOf(stat, mat, ride));
   const spin = new THREE.Group();
   spin.position.set(cx, 0.22, cz);
   const db = new GeomBuilder();
-  db.post(0, 0, 0, 0.28, 0.85, 0xd84a3a, 1);
+  db.post(0, 0, 0, 0.28, 0.85, SLOT_MAIN, 1);
   db.blob(0, 1.05, 0, 0.4, 0xe8b830, 1.05);
-  spin.add(meshOf(db, mat));
+  spin.add(meshOf(db, mat, ride));
   const arms = [];
   const armCols = [0x3a7ad8, 0xe8b830, 0x48b050, 0xc86ad8];
   for (let i = 0; i < 4; i++) {
     const arm = new THREE.Group();
     const ab = new GeomBuilder();
-    ab.box(1.1, 0.55, 0, 2.2, 0.16, 0.16, 0xc8c8d0, 1);
-    arm.add(meshOf(ab, mat));
+    ab.box(1.1, 0.55, 0, 2.2, 0.16, 0.16, SLOT_SUB, 1);
+    arm.add(meshOf(ab, mat, ride));
     const carM = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.8),
       new THREE.MeshLambertMaterial({ color: armCols[i] }));
+    carM.userData.carBody = true; carM.userData.carCol = armCols[i];
     carM.position.set(2.1, 0.5, 0);
     arm.add(carM);
     arm.rotation.y = i / 4 * Math.PI * 2;
@@ -312,18 +314,18 @@ function buildTwist(ride, mat) {
   };
 }
 
-function buildStall(ride, mat, colRoof, colBody, glyph) {
+function buildStall(ride, mat) {
 
   const g = new THREE.Group();
   const b = new GeomBuilder();
   const cx = 0.5 * TILE, cz = 0.5 * TILE;
-  b.box(cx, 0.55, cz, 1.5, 1.1, 1.3, colBody, 1);
+  b.box(cx, 0.55, cz, 1.5, 1.1, 1.3, SLOT_SUB, 1);
   b.box(cx, 0.85, cz + 0.66, 1.1, 0.45, 0.05, 0x2a3038, 1);        // 柜台窗口
-  b.box(cx, 1.3, cz, 1.8, 0.28, 1.6, colRoof, 1);                   // 平顶
-  b.frustum(cx, 1.42, cz, 1.1, 0.12, 0.55, colRoof, 1, 4);          // 尖顶
+  b.box(cx, 1.3, cz, 1.8, 0.28, 1.6, SLOT_MAIN, 1);                   // 平顶
+  b.frustum(cx, 1.42, cz, 1.1, 0.12, 0.55, SLOT_MAIN, 1, 4);          // 尖顶
   b.post(cx, 1.95, cz, 0.04, 0.35, 0x50535a, 1);                    // 旗杆
   b.tri([cx, 2.28, cz], [cx + 0.34, 2.2, cz], [cx, 2.12, cz], [[0, 0], [0, 0], [0, 0]], 0xe8b830, 1.1); // 小旗
-  g.add(meshOf(b, mat));
+  g.add(meshOf(b, mat, ride));
   return { group: g, update: () => {} };
 }
 
@@ -333,7 +335,7 @@ function buildHaunted(ride, mat) {
   const g = new THREE.Group();
   const b = new GeomBuilder();
   const cx = 1.5 * TILE, cz = 1.5 * TILE;
-  b.box(cx, 1.15, cz + 0.5, 4.6, 2.3, 3.2, 0x4a4048, 1);
+  b.box(cx, 1.15, cz + 0.5, 4.6, 2.3, 3.2, SLOT_MAIN, 1);
   b.frustum(cx, 2.3, cz + 0.5, 3.1, 0.9, 1.5, 0x22201f, 1, 4);
   b.frustum(cx - 1.8, 2.3, cz + 0.9, 0.75, 0.15, 2.6, 0x22201f, 1, 4);
   b.frustum(cx + 1.8, 2.3, cz + 0.9, 0.75, 0.15, 2.6, 0x22201f, 1, 4);
@@ -341,9 +343,9 @@ function buildHaunted(ride, mat) {
   b.box(cx + 1.8, 5.0, cz + 0.9, 0.35, 0.35, 0.35, 0xc05050, 1.25);
   b.box(cx, 0.9, cz + 2.05, 1.1, 1.7, 0.2, 0x1a1418, 1);
   for (const wx of [-1.55, -0.6, 0.6, 1.55]) {
-    b.box(cx + wx, 1.3, cz + 2.0, 0.45, 0.6, 0.08, 0x7a50c8, 1.2);
+    b.box(cx + wx, 1.3, cz + 2.0, 0.45, 0.6, 0.08, SLOT_SUB, 1.2);
   }
-  g.add(meshOf(b, mat));
+  g.add(meshOf(b, mat, ride));
   const ghost = new THREE.Group();
   const gm = new THREE.MeshLambertMaterial({ color: 0xe8f0e8, transparent: true, opacity: 0.85 });
   const gb = new THREE.Mesh(new THREE.SphereGeometry(0.42, 7, 5), gm);
@@ -372,19 +374,20 @@ function buildBumper(ride, mat) {
   const g = new THREE.Group();
   const b = new GeomBuilder();
   const cx = 2 * TILE, cz = 2 * TILE;
-  b.box(cx, 0.12, cz, 6.4, 0.24, 6.4, 0x6a7078, 1);
+  b.box(cx, 0.12, cz, 6.4, 0.24, 6.4, SLOT_SUB, 1);
   for (let i = 0; i < 4; i++) {
     b.post(cx - 2.9 + i * 1.95, 0.3, cz - 2.9, 0.07, 2.3, 0xc8a830, 1);
     b.post(cx - 2.9 + i * 1.95, 0.3, cz + 2.9, 0.07, 2.3, 0xc8a830, 1);
     b.post(cx - 2.9, 0.3, cz - 2.9 + i * 1.95, 0.07, 2.3, 0xc8a830, 1);
     b.post(cx + 2.9, 0.3, cz - 2.9 + i * 1.95, 0.07, 2.3, 0xc8a830, 1);
   }
-  b.box(cx, 2.65, cz, 6.9, 0.18, 6.9, 0xd8a030, 0.95);
-  g.add(meshOf(b, mat));
+  b.box(cx, 2.65, cz, 6.9, 0.18, 6.9, SLOT_MAIN, 0.95);
+  g.add(meshOf(b, mat, ride));
   const cars = [];
   const cols = [0xd84a3a, 0x3a7ad8, 0x48b050, 0xe8b830, 0xc86ad8, 0xe87a30];
   for (let i = 0; i < 6; i++) {
     const car = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.45, 1.0), new THREE.MeshLambertMaterial({ color: cols[i] }));
+    car.userData.carBody = true; car.userData.carCol = cols[i];
     const pole = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.9, 0.06), new THREE.MeshLambertMaterial({ color: 0x888888 }));
     pole.position.y = 1.15;
     car.add(pole);
@@ -417,23 +420,23 @@ function buildPirate(ride, mat) {
   const g = new THREE.Group();
   const b = new GeomBuilder();
   const cx = 2 * TILE, cz = 1 * TILE, topY = 3.4;
-  b.bar([cx - 2.4, 0, cz - 0.8], [cx - 0.25, topY, cz], 0.18, 0.18, 0x8a4a2a, 1);
-  b.bar([cx + 2.4, 0, cz - 0.8], [cx + 0.25, topY, cz], 0.18, 0.18, 0x8a4a2a, 1);
-  b.bar([cx - 2.4, 0, cz + 0.8], [cx - 0.25, topY, cz], 0.18, 0.18, 0x8a4a2a, 1);
-  b.bar([cx + 2.4, 0, cz + 0.8], [cx + 0.25, topY, cz], 0.18, 0.18, 0x8a4a2a, 1);
-  b.bar([cx - 0.5, topY, cz], [cx + 0.5, topY, cz], 0.2, 0.2, 0x8a4a2a, 1);
+  b.bar([cx - 2.4, 0, cz - 0.8], [cx - 0.25, topY, cz], 0.18, 0.18, SLOT_SUB, 1);
+  b.bar([cx + 2.4, 0, cz - 0.8], [cx + 0.25, topY, cz], 0.18, 0.18, SLOT_SUB, 1);
+  b.bar([cx - 2.4, 0, cz + 0.8], [cx - 0.25, topY, cz], 0.18, 0.18, SLOT_SUB, 1);
+  b.bar([cx + 2.4, 0, cz + 0.8], [cx + 0.25, topY, cz], 0.18, 0.18, SLOT_SUB, 1);
+  b.bar([cx - 0.5, topY, cz], [cx + 0.5, topY, cz], 0.2, 0.2, SLOT_SUB, 1);
   b.box(cx - 2.5, 0.15, cz, 0.5, 0.3, 2.2, 0xd8d0c0, 1);
   b.box(cx + 2.5, 0.15, cz, 0.5, 0.3, 2.2, 0xd8d0c0, 1);
-  g.add(meshOf(b, mat));
+  g.add(meshOf(b, mat, ride));
   const ship = new THREE.Group();
   const sb = new GeomBuilder();
-  sb.box(0, -1.5, 0, 3.0, 0.6, 0.9, 0x8a3020, 1);
+  sb.box(0, -1.5, 0, 3.0, 0.6, 0.9, SLOT_MAIN, 1);
   sb.frustum(0, -1.05, 0, 1.85, 1.6, 0.35, 0xd8b830, 1, 4);
-  sb.box(-1.65, -1.3, 0, 0.45, 0.85, 0.7, 0x8a3020, 1);
-  sb.box(1.65, -1.3, 0, 0.45, 0.85, 0.7, 0x8a3020, 1);
+  sb.box(-1.65, -1.3, 0, 0.45, 0.85, 0.7, SLOT_MAIN, 1);
+  sb.box(1.65, -1.3, 0, 0.45, 0.85, 0.7, SLOT_MAIN, 1);
   sb.post(0, -1.9, 0, 0.06, 2.5, 0xd8d0c0, 1);
   sb.tri([0, 0.6, 0], [0.7, 0.35, 0], [0, 0.12, 0], [[0, 0], [0, 0], [0, 0]], 0x303038, 1);
-  ship.add(meshOf(sb, mat));
+  ship.add(meshOf(sb, mat, ride));
   ship.position.set(cx, topY, cz);
   g.add(ship);
   let t = 0;
@@ -461,15 +464,15 @@ function buildTower(ride, mat) {
   const b = new GeomBuilder();
   const cx = 1 * TILE, cz = 1 * TILE;
   b.frustum(cx, 0, cz, 1.5, 1.3, 0.5, 0xc8c8d0, 1, 8);
-  b.frustum(cx, 0.4, cz, 0.55, 0.24, 10.5, 0xd8d8e0, 1, 8);
-  b.box(cx, 10.9, cz, 0.9, 0.7, 0.9, 0xd84a3a, 1);
+  b.frustum(cx, 0.4, cz, 0.55, 0.24, 10.5, SLOT_MAIN, 1, 8);
+  b.box(cx, 10.9, cz, 0.9, 0.7, 0.9, SLOT_SUB, 1);
   b.blob(cx, 11.5, cz, 0.3, 0xe8b830, 1.15);
-  g.add(meshOf(b, mat));
+  g.add(meshOf(b, mat, ride));
   const cabin = new THREE.Group();
   const cb = new GeomBuilder();
-  cb.frustum(0, 0, 0, 1.05, 0.95, 0.55, 0x3a7ad8, 1, 8);
+  cb.frustum(0, 0, 0, 1.05, 0.95, 0.55, SLOT_SUB, 1, 8);
   cb.frustum(0, 0.55, 0, 0.8, 0.75, 0.3, 0xe8e8f0, 1, 8);
-  cabin.add(meshOf(cb, mat));
+  cabin.add(meshOf(cb, mat, ride));
   cabin.position.set(cx, 1.2, cz);
   g.add(cabin);
   let t = 0;
@@ -494,16 +497,16 @@ function buildSlide(ride, mat) {
   const b = new GeomBuilder();
   const cx = 1.5 * TILE, cz = 1.5 * TILE;
   const TURNS = 1.5;
-  b.frustum(cx, 0, cz, 0.9, 0.7, 5.2, 0xd8d0c0, 1, 8);           // 塔身
+  b.frustum(cx, 0, cz, 0.9, 0.7, 5.2, SLOT_MAIN, 1, 8);           // 塔身
   b.blob(cx, 5.4, cz, 0.5, 0xd84a3a, 1.1);                        // 顶球
   const SEGS = 18;
   for (let i = 0; i < SEGS; i++) {                                 // 滑道(绕塔 1.5 圈)
     const a0 = i / SEGS * TURNS * Math.PI * 2, a1 = (i + 1) / SEGS * TURNS * Math.PI * 2;
     const y0 = 4.6 - i / SEGS * 4.2, y1 = 4.6 - (i + 1) / SEGS * 4.2;
     b.bar([cx + Math.cos(a0) * 1.3, y0, cz + Math.sin(a0) * 1.3],
-      [cx + Math.cos(a1) * 1.3, y1, cz + Math.sin(a1) * 1.3], 0.5, 0.12, 0x88c8e8, 1);
+      [cx + Math.cos(a1) * 1.3, y1, cz + Math.sin(a1) * 1.3], 0.5, 0.12, SLOT_SUB, 1);
   }
-  g.add(meshOf(b, mat));
+  g.add(meshOf(b, mat, ride));
   let t = 0;
   return {
     group: g,
@@ -522,20 +525,20 @@ function buildTeacups(ride, mat) {
   const g = new THREE.Group();
   const b = new GeomBuilder();
   const cx = 1.5 * TILE, cz = 1.5 * TILE;
-  b.frustum(cx, 0, cz, 2.6, 2.5, 0.22, 0xd8c8a8, 1, 10);          // 底盘
-  g.add(meshOf(b, mat));
+  b.frustum(cx, 0, cz, 2.6, 2.5, 0.22, SLOT_MAIN, 1, 10);          // 底盘
+  g.add(meshOf(b, mat, ride));
   const spin = new THREE.Group();
   spin.position.set(cx, 0.22, cz);
   const db = new GeomBuilder();
-  db.post(0, 0, 0, 0.3, 0.6, 0xe8b830, 1);
-  spin.add(meshOf(db, mat));
+  db.post(0, 0, 0, 0.3, 0.6, SLOT_SUB, 1);
+  spin.add(meshOf(db, mat, ride));
   const cups = [];
   const cupCols = [0xd84a3a, 0x3a7ad8, 0x48b050, 0xc86ad8];
   for (let i = 0; i < 4; i++) {
     const cup = new THREE.Group();
     const cb = new GeomBuilder();
     cb.frustum(0, 0, 0, 0.42, 0.5, 0.5, cupCols[i], 1, 8);        // 杯体
-    cup.add(meshOf(cb, mat));
+    cup.add(meshOf(cb, mat, ride));
     cup.position.set(Math.cos(i / 4 * Math.PI * 2) * 1.4, 0, Math.sin(i / 4 * Math.PI * 2) * 1.4);
     spin.add(cup);
     cups.push(cup);
@@ -563,19 +566,19 @@ function buildChairs(ride, mat) {
   const b = new GeomBuilder();
   const cx = 1.5 * TILE, cz = 1.5 * TILE;
   b.frustum(cx, 0, cz, 1.0, 0.8, 0.25, 0xd8d0c0, 1, 8);
-  b.frustum(cx, 0.2, cz, 0.45, 0.3, 3.4, 0xc8c8d0, 1, 8);         // 立柱
-  g.add(meshOf(b, mat));
+  b.frustum(cx, 0.2, cz, 0.45, 0.3, 3.4, SLOT_SUB, 1, 8);         // 立柱
+  g.add(meshOf(b, mat, ride));
   const top = new THREE.Group();
   top.position.set(cx, 3.6, cz);
   const tb = new GeomBuilder();
-  tb.frustum(0, 0, 0, 1.5, 1.1, 0.3, 0xd84a3a, 1, 10);            // 顶盖
-  top.add(meshOf(tb, mat));
+  tb.frustum(0, 0, 0, 1.5, 1.1, 0.3, SLOT_MAIN, 1, 10);            // 顶盖
+  top.add(meshOf(tb, mat, ride));
   for (let i = 0; i < 8; i++) {
     const seat = new THREE.Group();
     const sb = new GeomBuilder();
     sb.post(0, -1.3, 0, 0.03, 1.3, 0x8a8d8f, 1);                   // 吊索
     sb.box(0, -1.55, 0, 0.4, 0.28, 0.4, [0xe8b830, 0x3a7ad8, 0x48b050, 0xc86ad8][i % 4], 1);
-    seat.add(meshOf(sb, mat));
+    seat.add(meshOf(sb, mat, ride));
     seat.position.set(Math.cos(i / 8 * Math.PI * 2) * 1.25, 0, Math.sin(i / 8 * Math.PI * 2) * 1.25);
     top.add(seat);
   }
@@ -599,13 +602,13 @@ function buildDropTower(ride, mat) {
   const b = new GeomBuilder();
   const cx = 1 * TILE, cz = 1 * TILE;
   b.frustum(cx, 0, cz, 1.4, 1.2, 0.4, 0xc8c8d0, 1, 8);
-  b.frustum(cx, 0.3, cz, 0.5, 0.22, 12, 0x8a6ad8, 1, 8);          // 塔身
+  b.frustum(cx, 0.3, cz, 0.5, 0.22, 12, SLOT_MAIN, 1, 8);          // 塔身
   b.blob(cx, 12.5, cz, 0.35, 0xe8b830, 1.1);
-  g.add(meshOf(b, mat));
+  g.add(meshOf(b, mat, ride));
   const gon = new THREE.Group();
   const gb = new GeomBuilder();
-  gb.frustum(0, 0, 0, 0.95, 0.85, 0.4, 0xd84a3a, 1, 8);           // 环形座舱
-  gon.add(meshOf(gb, mat));
+  gb.frustum(0, 0, 0, 0.95, 0.85, 0.4, SLOT_SUB, 1, 8);           // 环形座舱
+  gon.add(meshOf(gb, mat, ride));
   gon.position.set(cx, 1, cz);
   g.add(gon);
   let t = 0;
@@ -633,21 +636,21 @@ function buildFrisbee(ride, mat) {
   const g = new THREE.Group();
   const b = new GeomBuilder();
   const cx = 2 * TILE, cz = 1 * TILE, topY = 4.4;
-  b.bar([cx - 2.2, 0, cz], [cx - 0.2, topY, cz], 0.2, 0.2, 0x3a6ad8, 1);
-  b.bar([cx + 2.2, 0, cz], [cx + 0.2, topY, cz], 0.2, 0.2, 0x3a6ad8, 1);
+  b.bar([cx - 2.2, 0, cz], [cx - 0.2, topY, cz], 0.2, 0.2, SLOT_MAIN, 1);
+  b.bar([cx + 2.2, 0, cz], [cx + 0.2, topY, cz], 0.2, 0.2, SLOT_MAIN, 1);
   b.box(cx - 2.3, 0.15, cz, 0.6, 0.3, 1.6, 0xd8d0c0, 1);
   b.box(cx + 2.3, 0.15, cz, 0.6, 0.3, 1.6, 0xd8d0c0, 1);
-  g.add(meshOf(b, mat));
+  g.add(meshOf(b, mat, ride));
   const arm = new THREE.Group();
   arm.position.set(cx, topY, cz);
   const ab = new GeomBuilder();
   ab.post(0, -3.4, 0, 0.14, 3.4, 0xe8b830, 1);                     // 摆臂
-  arm.add(meshOf(ab, mat));
+  arm.add(meshOf(ab, mat, ride));
   const disc = new THREE.Group();
   disc.position.set(0, -3.6, 0);
   const dbb = new GeomBuilder();
-  dbb.frustum(0, 0, 0, 1.15, 1.05, 0.3, 0xd84a3a, 1, 10);         // 圆盘座舱
-  disc.add(meshOf(dbb, mat));
+  dbb.frustum(0, 0, 0, 1.15, 1.05, 0.3, SLOT_SUB, 1, 10);         // 圆盘座舱
+  disc.add(meshOf(dbb, mat, ride));
   arm.add(disc);
   g.add(arm);
   let t = 0;
@@ -676,17 +679,17 @@ function buildTopspin(ride, mat) {
   const b = new GeomBuilder();
   const cx = 2 * TILE, cz = 1 * TILE, topY = 3.9;
   for (const sx of [-2.4, 2.4]) {
-    b.post(cx + sx, 0, cz, 0.16, topY, 0x48b050, 1);
+    b.post(cx + sx, 0, cz, 0.16, topY, SLOT_MAIN, 1);
     b.box(cx + sx, 0.15, cz, 0.5, 0.3, 1.4, 0xd8d0c0, 1);
   }
-  b.bar([cx - 2.4, topY, cz], [cx + 2.4, topY, cz], 0.16, 0.16, 0x48b050, 1);
-  g.add(meshOf(b, mat));
+  b.bar([cx - 2.4, topY, cz], [cx + 2.4, topY, cz], 0.16, 0.16, SLOT_MAIN, 1);
+  g.add(meshOf(b, mat, ride));
   const row = new THREE.Group();
   row.position.set(cx, topY, cz);
   const rb = new GeomBuilder();
-  rb.box(0, -0.9, 0, 2.6, 0.5, 0.6, 0xc86ad8, 1);                  // 横排座舱
+  rb.box(0, -0.9, 0, 2.6, 0.5, 0.6, SLOT_SUB, 1);                  // 横排座舱
   rb.box(0, -0.55, -0.28, 2.6, 0.5, 0.08, 0x8a4ad8, 1);            // 靠背
-  row.add(meshOf(rb, mat));
+  row.add(meshOf(rb, mat, ride));
   g.add(row);
   let t = 0;
   return {
@@ -709,12 +712,12 @@ function buildTopspin(ride, mat) {
 function buildMaze(ride, mat) {
   const g = new THREE.Group();
   const b = new GeomBuilder();
-  const hedge = (x0, z0, x1, z1) => b.bar([x0, 0.45, z0], [x1, 0.45, z1], 0.34, 0.9, 0x2a6a26, 1);
+  const hedge = (x0, z0, x1, z1) => b.bar([x0, 0.45, z0], [x1, 0.45, z1], 0.34, 0.9, SLOT_MAIN, 1);
   // 外墙(南侧留入口)+ Π 形内墙
   hedge(0.4, 0.4, 7.6, 0.4); hedge(0.4, 7.6, 0.4, 0.4); hedge(7.6, 0.4, 7.6, 7.6);
   hedge(0.4, 7.6, 4.8, 7.6); hedge(6.0, 7.6, 7.6, 7.6);
   hedge(2.6, 2.2, 2.6, 6.0); hedge(5.2, 2.2, 5.2, 6.0); hedge(2.6, 2.2, 5.2, 2.2);
-  g.add(meshOf(b, mat));
+  g.add(meshOf(b, mat, ride));
   // 蛇形参观路径(绕内墙一圈,闭口回入口)
   const WP = [[5.9, 8.2], [5.9, 6.8], [1.3, 6.8], [1.3, 1.3], [6.7, 1.3], [6.7, 6.8], [5.9, 6.8]];
   const segs = [];
@@ -752,7 +755,7 @@ function buildGolf(ride, mat) {
   const g = new THREE.Group();
   const b = new GeomBuilder();
   const cx = 1.5 * TILE, cz = 1.5 * TILE;
-  b.box(cx, 0.07, cz, 5.6, 0.14, 5.6, 0x58a848, 1);                  // 果岭
+  b.box(cx, 0.07, cz, 5.6, 0.14, 5.6, SLOT_MAIN, 1);                  // 果岭
   const holes = [[cx - 1.6, cz - 1.6], [cx + 1.6, cz - 1.4], [cx, cz + 1.8]];
   holes.forEach(([hx, hz], i) => {
     b.blob(hx, 0.15, hz, 0.14, 0x141810, 0.9);                        // 洞
@@ -760,7 +763,7 @@ function buildGolf(ride, mat) {
     b.tri([hx + 0.25, 1.02, hz], [hx + 0.62, 0.88, hz], [hx + 0.25, 0.76, hz],
       [[0, 0], [1, 0], [0, 1]], [0xd84a3a, 0x3a7ad8, 0xe8b830][i], 1); // 旗面
   });
-  g.add(meshOf(b, mat));
+  g.add(meshOf(b, mat, ride));
   let t = 0;
   return {
     group: g,
@@ -783,14 +786,14 @@ function buildCableCar(ride, mat, game) {
   const cB = { x: (bx - ride.x) * TILE + TILE / 2, y: ride.baseYB - ride.baseY, z: (by - ride.y) * TILE + TILE / 2 };
   const topA = cA.y + 3.6, topB = cB.y + 3.6;
   for (const c of [cA, cB]) {
-    b.box(c.x, c.y + 0.06, c.z, TILE * 0.9, 0.14, TILE * 0.9, 0xb0a890, 1);      // 站台铺面
-    b.post(c.x, c.y, c.z, 0.16, 3.6, 0x3a6ad8, 1);                               // 主塔
-    b.bar([c.x - 0.7, c.y + 3.5, c.z], [c.x + 0.7, c.y + 3.5, c.z], 0.12, 0.12, 0x3a6ad8, 1);  // 横臂
+    b.box(c.x, c.y + 0.06, c.z, TILE * 0.9, 0.14, TILE * 0.9, SLOT_SUB, 1);      // 站台铺面
+    b.post(c.x, c.y, c.z, 0.16, 3.6, SLOT_MAIN, 1);                               // 主塔
+    b.bar([c.x - 0.7, c.y + 3.5, c.z], [c.x + 0.7, c.y + 3.5, c.z], 0.12, 0.12, SLOT_MAIN, 1);  // 横臂
   }
   // 双缆
   b.bar([cA.x, topA, cA.z - 0.3], [cB.x, topB, cB.z - 0.3], 0.05, 0.05, 0x303038, 1);
   b.bar([cA.x, topA, cA.z + 0.3], [cB.x, topB, cB.z + 0.3], 0.05, 0.05, 0x303038, 1);
-  g.add(meshOf(b, mat));
+  g.add(meshOf(b, mat, ride));
   const cabins = [];
   const cabCols = [0xd84a3a, 0xe8b830, 0x48b050, 0x3a7ad8];
   for (let i = 0; i < 4; i++) {
@@ -798,7 +801,7 @@ function buildCableCar(ride, mat, game) {
     const cb = new GeomBuilder();
     cb.post(0, -0.8, 0, 0.04, 0.8, 0x8a8d8f, 1);                                 // 吊臂
     cb.box(0, -1.25, 0, 0.7, 0.6, 0.7, cabCols[i], 1);                           // 舱体
-    cab.add(meshOf(cb, mat));
+    cab.add(meshOf(cb, mat, ride));
     g.add(cab);
     cabins.push(cab);
   }
@@ -859,11 +862,11 @@ function buildBoats(ride, mat, game) {
   const g = new THREE.Group();
   const b = new GeomBuilder();
   const cx = TILE / 2, cz = TILE / 2;
-  b.box(cx, 0.08, cz, TILE * 0.9, 0.16, TILE * 0.9, 0x9a7350, 1);      // 木码头
+  b.box(cx, 0.08, cz, TILE * 0.9, 0.16, TILE * 0.9, SLOT_SUB, 1);      // 木码头
   b.post(cx - 0.7, 0.1, cz - 0.7, 0.08, 1.0, 0x6d4522, 1);
   b.post(cx + 0.7, 0.1, cz - 0.7, 0.08, 1.0, 0x6d4522, 1);
-  b.box(cx, 1.1, cz - 0.7, 1.7, 0.1, 0.5, 0xd84a3a, 1);                // 小棚
-  g.add(meshOf(b, mat));
+  b.box(cx, 1.1, cz - 0.7, 1.7, 0.1, 0.5, SLOT_MAIN, 1);                // 小棚
+  g.add(meshOf(b, mat, ride));
   const w = game.world;
   const WATER_Y = WATER_H * H_UNIT + 0.05;
   // 船(真实网格,4 艘)
@@ -873,7 +876,7 @@ function buildBoats(ride, mat, game) {
     const bb = new GeomBuilder();
     bb.box(0, 0.12, 0, 0.7, 0.24, 1.3, boatCols[i], 1);   // 船身
     bb.box(0, 0.3, -0.2, 0.6, 0.12, 0.5, 0xd8d0c0, 1);    // 座位
-    const mesh = meshOf(bb, mat);
+    const mesh = meshOf(bb, mat, ride);
     g.add(mesh);
     boats.push({ mesh, tile: null, prev: null, target: null, state: 'dock', riders: [], tripT: 0 });
   }
@@ -973,16 +976,13 @@ export class Rides {
 
   defs() { return RIDE_DEFS; }
 
-  // 设施涂装:整体着色(材质克隆,白色=恢复默认;每个 mesh 记住原材质)
+  // 设施涂装:按部件槽位重写顶点色(主色/副色),车厢跟主色(未涂色保持各自原色)
   applyPaint(ride) {
     if (!ride.group) return;
-    const tint = ride.paint ?? 0xffffff;
-    if (!ride._paintMat) ride._paintMat = this.mat.clone();
-    ride._paintMat.color.setHex(tint);
     ride.group.traverse(o => {
       if (!o.isMesh) return;
-      if (!o.userData.baseMat) o.userData.baseMat = o.material;
-      o.material = (tint === 0xffffff) ? o.userData.baseMat : ride._paintMat;
+      if (o.userData.slotMain || o.userData.slotSub) paintSlots(o, ride);
+      else if (o.userData.carBody) o.material.color.setHex(ride.paintMain ?? o.userData.carCol);
     });
   }
 
@@ -1396,7 +1396,7 @@ export class Rides {
     if (w.rideTile[w.idx(chk.x, chk.y)] === -1) w.rideTile[w.idx(chk.x, chk.y)] = ride.id;
     ride.api?.rebuild?.();
     this.computeStations(ride);
-    if (ride.paint != null) this.applyPaint(ride);
+    if (ride.paintMain != null || ride.paintSub != null) this.applyPaint(ride);
     return { ok: true, cost: PIECE_BY_ID[type].cost };
   }
   undoPiece(rideId) {
@@ -1409,7 +1409,7 @@ export class Rides {
     if (w.rideTile[w.idx(pc.x, pc.y)] === ride.id) w.rideTile[w.idx(pc.x, pc.y)] = -1;
     ride.api?.rebuild?.();
     this.computeStations(ride);
-    if (ride.paint != null) this.applyPaint(ride);
+    if (ride.paintMain != null || ride.paintSub != null) this.applyPaint(ride);
     return { ok: true, cost: -Math.round(PIECE_BY_ID[pc.t].cost * 0.55) };
   }
   finishCustom(rideId) {
@@ -1443,7 +1443,7 @@ export class Rides {
     ride.api?.rebuild?.();
     this.computeQueueCells(ride);
     this.computeStations(ride);
-    if (ride.paint != null) this.applyPaint(ride);
+    if (ride.paintMain != null || ride.paintSub != null) this.applyPaint(ride);
     return { ok: true, cost: 0 };
   }
 
@@ -1487,7 +1487,7 @@ export class Rides {
     this.group.add(group);
     ride.group = group;
     ride.api = api;
-    if (ride.paint != null) this.applyPaint(ride);
+    if (ride.paintMain != null || ride.paintSub != null) this.applyPaint(ride);
   }
 
   // 读档恢复(不做校验/不改 world 数组——数组来自存档)
@@ -1513,9 +1513,10 @@ export class Rides {
         if (hut) hut.position.set((ride[which].inner[0] - ride.x) * TILE + TILE / 2, 0, (ride[which].inner[1] - ride.y) * TILE + TILE / 2);
       }
       ride.customName = s.name || null;
-      ride.paint = s.paint ?? null;
+      ride.paintMain = s.paintMain ?? (s.paint && s.paint !== 0xffffff ? s.paint : null);
+      ride.paintSub = s.paintSub ?? null;
       ride.ageMonths = s.age || 0;
-      if (ride.paint != null) this.applyPaint(ride);
+      if (ride.paintMain != null || ride.paintSub != null) this.applyPaint(ride);
       return ride;
     }
     if (s.custom) {   // 定制过山车:轨道件与出入口来自存档
@@ -1551,7 +1552,8 @@ export class Rides {
       };
     }
     ride.customName = s.name || null;
-    ride.paint = s.paint ?? null;
+    ride.paintMain = s.paintMain ?? (s.paint && s.paint !== 0xffffff ? s.paint : null);   // 旧版整体色并入主色
+    ride.paintSub = s.paintSub ?? null;
     ride.ageMonths = s.age || 0;
     this._buildVisuals(ride);
     this.list.push(ride);

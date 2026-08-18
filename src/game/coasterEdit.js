@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { TILE, H_UNIT, COL, WATER_H, PATH } from '../config.js';
 import { GeomBuilder } from '../render/geom.js';
+import { meshOf, SLOT_MAIN, SLOT_SUB, paintSlots } from '../render/paintSlots.js';
 import { World } from '../world/world.js';
 
 // 轨道件定义;dir 约定与世界一致:0=+x(E) 1=+y(N) 2=-x(W) 3=-y(S)
@@ -152,6 +153,7 @@ function buildCarBody(style, i, mat) {
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.5, 1.25),
       new THREE.MeshLambertMaterial({ color: bodyCol }));
     body.position.y = 0.42;
+    body.userData.carBody = true; body.userData.carCol = bodyCol;
     const roof = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.12, 1.35),
       new THREE.MeshLambertMaterial({ color: 0x303038 }));
     roof.position.y = 0.75;
@@ -175,6 +177,7 @@ function buildCarBody(style, i, mat) {
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.6, 1.35),
       new THREE.MeshLambertMaterial({ color: bodyCols[i % 4] }));
     body.position.y = -1.9;
+    body.userData.carBody = true; body.userData.carCol = bodyCols[i % 4];
     const hanger = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.7, 0.14),
       new THREE.MeshLambertMaterial({ color: 0x303038 }));
     hanger.position.y = -0.85;
@@ -184,6 +187,7 @@ function buildCarBody(style, i, mat) {
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.42, 1.1),
       new THREE.MeshLambertMaterial({ color: carCols[i % 4] }));
     body.position.y = 0.32;
+    body.userData.carBody = true; body.userData.carCol = carCols[i % 4];
     const nose = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.18, 0.4),
       new THREE.MeshLambertMaterial({ color: 0x222228 }));
     nose.position.set(0, 0.2, 0.62);
@@ -238,18 +242,18 @@ export function buildCustomCoaster(game, ride) {
         b.bar([p.x, p.y + 2.3, p.z], [q.x, q.y + 2.3, q.z], 0.32, 0.26, style.beamCol, 1);
       } else if (style.kind === 'channel') {
         // 水槽:两侧壁 + 水面
-        b.bar([p.x - ox * 0.5, p.y + 0.18, p.z - oz * 0.5], [q.x - ox * 0.5, q.y + 0.18, q.z - oz * 0.5], 0.1, 0.36, style.wallCol, 1);
-        b.bar([p.x + ox * 0.5, p.y + 0.18, p.z + oz * 0.5], [q.x + ox * 0.5, q.y + 0.18, q.z + oz * 0.5], 0.1, 0.36, style.wallCol, 1);
+        b.bar([p.x - ox * 0.5, p.y + 0.18, p.z - oz * 0.5], [q.x - ox * 0.5, q.y + 0.18, q.z - oz * 0.5], 0.1, 0.36, SLOT_MAIN, 1);
+        b.bar([p.x + ox * 0.5, p.y + 0.18, p.z + oz * 0.5], [q.x + ox * 0.5, q.y + 0.18, q.z + oz * 0.5], 0.1, 0.36, SLOT_MAIN, 1);
         b.bar([p.x, p.y + 0.06, p.z], [q.x, q.y + 0.06, q.z], 0.86, 0.06, style.waterCol, 0.95);
       } else {
         // 双钢轨(螺旋翻滚段随滚转角偏转;+ 过山车中央木脊梁)
         const r1 = rolls[i] || 0, r2 = rolls[(i + 1) % M] || 0;
         const c1 = Math.cos(r1), s1 = Math.sin(r1), c2 = Math.cos(r2), s2 = Math.sin(r2);
         b.bar([p.x - ox * 0.34 * c1, p.y + 0.1 - 0.34 * s1, p.z - oz * 0.34 * c1],
-          [q.x - ox * 0.34 * c2, q.y + 0.1 - 0.34 * s2, q.z - oz * 0.34 * c2], 0.09, 0.09, style.railCol, 1);
+          [q.x - ox * 0.34 * c2, q.y + 0.1 - 0.34 * s2, q.z - oz * 0.34 * c2], 0.09, 0.09, SLOT_MAIN, 1);
         b.bar([p.x + ox * 0.34 * c1, p.y + 0.1 + 0.34 * s1, p.z + oz * 0.34 * c1],
-          [q.x + ox * 0.34 * c2, q.y + 0.1 + 0.34 * s2, q.z + oz * 0.34 * c2], 0.09, 0.09, style.railCol, 1);
-        if (style.spineCol && !r1) b.bar([p.x, p.y - 0.2, p.z], [q.x, p.y - 0.2, q.z], 0.34, 0.2, style.spineCol, 1);
+          [q.x + ox * 0.34 * c2, q.y + 0.1 + 0.34 * s2, q.z + oz * 0.34 * c2], 0.09, 0.09, SLOT_MAIN, 1);
+        if (style.spineCol && !r1) b.bar([p.x, p.y - 0.2, p.z], [q.x, p.y - 0.2, q.z], 0.34, 0.2, SLOT_SUB, 1);
         if (meta[i] === 'lift') b.bar([p.x, p.y + 0.02, p.z], [q.x, q.y + 0.02, q.z], 0.07, 0.05, 0x3a3a3a, 1);
         if (meta[i] === 'brake') b.bar([p.x, p.y + 0.05, p.z], [q.x, q.y + 0.05, q.z], 0.16, 0.08, 0x8a8d8f, 1);
       }
@@ -262,7 +266,7 @@ export function buildCustomCoaster(game, ride) {
       const ox = -tz / tl, oz = tx / tl;
       const isLoop = meta[i] === 'loop' || meta[(i + 1) % M] === 'loop' || rolls[i] || rolls[(i + 1) % M];
       if (style.tieCol && !isLoop) {
-        b.bar([p.x - ox * 0.55, p.y - 0.02, p.z - oz * 0.55], [p.x + ox * 0.55, p.y - 0.02, p.z + oz * 0.55], 0.14, 0.07, style.tieCol, 1);
+        b.bar([p.x - ox * 0.55, p.y - 0.02, p.z - oz * 0.55], [p.x + ox * 0.55, p.y - 0.02, p.z + oz * 0.55], 0.14, 0.07, SLOT_SUB, 1);
       }
       if (i % 6 === 0 && !isLoop) {
         const gtx = World.worldToTileX(p.x), gty = World.worldToTileY(p.z);
@@ -272,11 +276,11 @@ export function buildCustomCoaster(game, ride) {
           const hgt = topY - ground;
           if (hgt > 0.3) {
             if (hgt > 1.6) {
-              b.post(p.x - 0.5, ground, p.z, 0.09, hgt, style.supportCol, 1);
-              b.post(p.x + 0.5, ground, p.z, 0.09, hgt, style.supportCol, 1);
-              b.bar([p.x - 0.58, ground + hgt - 0.15, p.z], [p.x + 0.58, ground + hgt - 0.15, p.z], 0.12, 0.1, style.supportCol, 0.95);
+              b.post(p.x - 0.5, ground, p.z, 0.09, hgt, SLOT_SUB, 1);
+              b.post(p.x + 0.5, ground, p.z, 0.09, hgt, SLOT_SUB, 1);
+              b.bar([p.x - 0.58, ground + hgt - 0.15, p.z], [p.x + 0.58, ground + hgt - 0.15, p.z], 0.12, 0.1, SLOT_SUB, 0.95);
             } else {
-              b.post(p.x, ground, p.z, 0.1, hgt, style.supportCol, 1);
+              b.post(p.x, ground, p.z, 0.1, hgt, SLOT_SUB, 1);
             }
           }
         }
@@ -290,10 +294,10 @@ export function buildCustomCoaster(game, ride) {
       b.box(c.x, py - 0.04, c.z, TILE * 0.96, 0.12, TILE * 0.96, 0xb0a890, 1);
       const dx = World.DX[pc.dir], dy = World.DY[pc.dir];
       const sx = -dy, sz = dx;   // 站台侧面
-      b.post(c.x + sx * 0.8, py, c.z + sz * 0.8, 0.08, 1.7, style.supportCol, 1);
-      b.box(c.x + sx * 0.7, py + 1.85, c.z + sz * 0.7, Math.abs(dx) * TILE * 0.9 + 0.6, 0.12, Math.abs(dy) * TILE * 0.9 + 0.6, style.canopyCol, 1);
+      b.post(c.x + sx * 0.8, py, c.z + sz * 0.8, 0.08, 1.7, SLOT_SUB, 1);
+      b.box(c.x + sx * 0.7, py + 1.85, c.z + sz * 0.7, Math.abs(dx) * TILE * 0.9 + 0.6, 0.12, Math.abs(dy) * TILE * 0.9 + 0.6, SLOT_SUB, 1);
     }
-    trackMesh = new THREE.Mesh(b.build(), mat);
+    trackMesh = meshOf(b, mat, ride);
     group.add(trackMesh);
 
     // 物理缓存

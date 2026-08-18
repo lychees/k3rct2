@@ -280,10 +280,24 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
   const ride = game.rides.list[0];
   const r1 = applyAction(game, { type: 'rideRename', rideId: ride.id, name: '飞驰骏马' }, true);
   assertT(r1.ok && ride.customName === '飞驰骏马', '设施改名生效');
-  const r2 = applyAction(game, { type: 'ridePaint', rideId: ride.id, color: 0x48b050 }, true);
-  assertT(r2.ok && ride.paint === 0x48b050, '设施涂装生效');
-  const r3 = applyAction(game, { type: 'ridePaint', rideId: ride.id, color: 0xffffff }, true);
-  assertT(r3.ok && ride.paint === 0xffffff, '涂装恢复默认');
+  const r2 = applyAction(game, { type: 'ridePaint', rideId: ride.id, slot: 'main', color: 0x48b050 }, true);
+  assertT(r2.ok && ride.paintMain === 0x48b050, '设施涂装(主色)生效');
+  const r3 = applyAction(game, { type: 'ridePaint', rideId: ride.id, slot: 'sub', color: 0x303038 }, true);
+  assertT(r3.ok && ride.paintSub === 0x303038, '设施涂装(副色)生效');
+  let hasSlots = false, matches = false;
+  ride.group.traverse(o => {   // 顶点色真的被重写(红 → 绿,含明暗系数)
+    if (o.isMesh && o.userData.slotMain) {
+      hasSlots = true;
+      const ca = o.geometry.attributes.color;
+      const { idx } = o.userData.slotMain;
+      let maxR = 0;
+      for (const i2 of idx) maxR = Math.max(maxR, Math.round(ca.getX(i2) * 255));
+      if (maxR < 90) matches = true;   // 默认红 227 → 涂绿后 ≤80
+    }
+  });
+  assertT(hasSlots && matches, '槽位顶点色已重写');
+  const r4 = applyAction(game, { type: 'ridePaint', rideId: ride.id, slot: 'main', reset: true }, true);
+  assertT(r4.ok && ride.paintMain === null, '涂装恢复默认');
 }
 
 // 轨道编辑器:自动闭环搜索
