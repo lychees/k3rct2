@@ -368,6 +368,39 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
   }
 }
 
+// 游客 AI:避开死胡同 + 雨天室内偏好
+{
+  // 环形主干 + (11,12) 死胡同支路;游客站 (11,11) 岔口
+  const w2 = generateTerrain(new World(), 99);
+  for (const [px, py] of [[10, 10], [11, 10], [12, 10], [12, 11], [11, 11], [10, 11], [11, 12]]) w2.path[w2.idx(px, py)] = 1;
+  const g2 = { world: w2, headless: true, weather: null };
+  const P2 = new Peeps(g2);
+  const c11 = w2.tileCenter(11, 11);
+  const peep2 = { id: 1, tile: [11, 11], prev: null, targetTile: null, x: c11.x, z: c11.z, yaw: 0, speed: 2, state: 'wander', stateT: 0, walkT: 0, off: 0, thinkT: 0, groupId: 0 };
+  let deadPicks = 0;
+  for (let i = 0; i < 40; i++) {
+    peep2.targetTile = null;
+    P2._wander(peep2, 0.001);
+    if (peep2.targetTile && peep2.targetTile[0] === 11 && peep2.targetTile[1] === 12) deadPicks++;
+    peep2.targetTile = null;
+  }
+  assertT(deadPicks === 0, '游客 AI:不钻死胡同');
+
+  // 雨天室内偏好:同一游客,室内设施在雨天更易被选中
+  const peep3 = game.peeps.list.find(p => !p.kid);
+  const mk = (id, indoor) => ({ id, status: 'open', broken: false, price: 1, queue: [], queueCells: [1], def: { kind: 'flat', intensity: 40, indoor }, intensity: 40 });
+  const indoorR = mk(998, true), outdoorR = mk(997, false);
+  game.weather = { mode: 'rain' };
+  const match = 1 - Math.min(1, Math.abs(0.4 - (peep3.thrill ?? 0.5)) * 1.6);
+  const hI = ((peep3.id * 31 + 998 * 17) % 100) / 100;
+  const hO = ((peep3.id * 31 + 997 * 17) % 100) / 100;
+  const expI = (hI <= 0.25 + match * 0.75 + 0.25) && peep3.cash >= 1;
+  const expO = (hO <= 0.25 + match * 0.75 - 0.1) && peep3.cash >= 1;
+  assertT(game.rides.wantsRide(peep3, indoorR) === expI && game.rides.wantsRide(peep3, outdoorR) === expO,
+    '雨天室内偏好:判定与公式一致');
+  game.weather = null;
+}
+
 // 设施老化与翻新
 {
   const ride = game.rides.list[0];

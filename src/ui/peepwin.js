@@ -17,6 +17,20 @@ export function openPeepWindow(game, wm, kind, id) {
       const d = document.createElement('div');
       d.style.minWidth = '200px';
       el.appendChild(d);
+      const followBtn = document.createElement('button');
+      followBtn.className = 'rct-btn small';
+      followBtn.textContent = '跟随';
+      followBtn.title = '镜头持续跟随(等距视角;Esc 或离园自动停止)';
+      followBtn.addEventListener('click', () => {
+        const rec = kind === 'staff'
+          ? game.staff?.list.find(s => s.id === id)
+          : game.peeps?.list.find(p => p.id === id);
+        if (!rec) return;
+        game.followPeep = game.followPeep === rec ? null : rec;
+        game.audio?.play('click');
+        w.refresh();
+      });
+      el.appendChild(followBtn);
       // 0..1 需求条;invert=true 时值高为红(饿/渴/内急/晕)
       const bar = (label, v, invert = false) => {
         const pct = Math.round(Math.max(0, Math.min(1, v ?? 0)) * 100);
@@ -33,6 +47,7 @@ export function openPeepWindow(game, wm, kind, id) {
           ? game.staff?.list.find(s => s.id === id)
           : game.peeps?.list.find(p => p.id === id);
         if (!rec) { wm.close(wid); return; }   // 离园/解雇 → 自动关窗
+        followBtn.textContent = game.followPeep === rec ? '停止跟随' : '跟随';
         if (kind === 'staff') {
           const def = STAFF_ROLES.find(r => r.id === rec.role);
           const stateText = rec.target ? '前往任务' : (rec.state === 'work' ? '作业中' : (rec.working ? '作业中' : '巡逻中'));

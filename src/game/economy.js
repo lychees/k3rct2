@@ -21,11 +21,14 @@ export class Economy {
     this.cur = this.blankMonth();
     this.history = [];          // 已结算月份
     this.ratingHistory = [];    // 评分曲线(月采样,公园面板图表)
+    this.guestHistory = [];     // 游客数曲线(同上采样节奏)
     this.listeners = { month: [], change: [] };
   }
   sampleRating() {
     this.ratingHistory.push(Math.round(this.parkRating));
     if (this.ratingHistory.length > 48) this.ratingHistory.shift();
+    this.guestHistory.push(this.game.peeps ? this.game.peeps.list.length : 0);
+    if (this.guestHistory.length > 48) this.guestHistory.shift();
   }
   blankMonth() {
     return { 建设: 0, 景观: 0, 门票: 0, 设施: 0, 商店: 0, 工资: 0, 研发: 0, 利息: 0 };

@@ -207,6 +207,18 @@ export class Peeps {
         if (p.prev) { p.targetTile = p.prev; return; }
         return;
       }
+      // 尽量不走死胡同(只有一个路径邻居的格)
+      if (opts.length > 1) {
+        const open = opts.filter(([ox, oy]) => {
+          let deg = 0;
+          for (let d = 0; d < 4; d++) {
+            const [ax, ay] = w.neighbor(ox, oy, d);
+            if (w.in(ax, ay) && w.path[w.idx(ax, ay)] !== PATH.NONE) deg++;
+          }
+          return deg > 1;
+        });
+        if (open.length) { opts.length = 0; opts.push(...open); }
+      }
       // 家庭组:非领队成员偏向选择离领队近的方向(拉开 10 格以上就各走各的)
       if (opts.length > 1 && p.groupId && !p.isLeader) {
         const L = this.list.find(q => q.groupId === p.groupId && q.isLeader && q.state !== 'gone');

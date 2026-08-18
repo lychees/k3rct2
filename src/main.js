@@ -132,6 +132,13 @@ function installLoop(game) {
     last = now;
     const simDt = game.mp ? dt : dt * (game.speedMul || 1);   // 单机可调速(联机服务器权威)
     game.time += dt;
+    // 跟随模式:镜头目标锁定游客/员工(离园自动解除)
+    if (game.followPeep) {
+      const fp = game.followPeep;
+      const alive = (game.peeps?.list.includes(fp)) || (game.staff?.list.includes(fp));
+      if (!alive || fp.hidden) game.followPeep = null;
+      else game.camera.target.set(fp.x, 0, fp.z);
+    }
     if (game.fp?.active) game.fp.update(dt);       // 第一视角模式接管相机
     else game.camera.update(dt);
     if (game.mp) {

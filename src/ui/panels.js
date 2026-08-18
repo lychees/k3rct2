@@ -205,6 +205,27 @@ export class Panels {
     tl.style.maxHeight = '150px';
     tl.style.fontSize = '11px';
     el.appendChild(tl);
+    const gChart = document.createElement('canvas');
+    gChart.width = 210; gChart.height = 40;
+    gChart.style.cssText = 'width:210px;height:40px;background:rgba(20,24,34,0.8);border-radius:3px;margin-top:4px';
+    gChart.title = '园内游客数走势';
+    el.appendChild(gChart);
+    const gc2d = gChart.getContext('2d');
+    const drawGuests = () => {
+      gc2d.clearRect(0, 0, 210, 40);
+      const hist = g.economy.guestHistory || [];
+      if (hist.length < 2) return;
+      const maxV = Math.max(10, ...hist);
+      gc2d.strokeStyle = '#88b0e8';
+      gc2d.lineWidth = 1.5;
+      gc2d.beginPath();
+      hist.forEach((v, i) => {
+        const x = i / (hist.length - 1) * 204 + 3;
+        const y = 37 - (v / maxV) * 33;
+        if (i === 0) gc2d.moveTo(x, y); else gc2d.lineTo(x, y);
+      });
+      gc2d.stroke();
+    };
     w.refresh = () => {
       const n = g.peeps.list.length;
       let happy = 0;
@@ -217,6 +238,7 @@ export class Panels {
       tl.innerHTML = '<div class="rct-item"><span class="sub"><b>游客想法</b></span></div>' +
         (th.length ? th : [{ name: '', text: '(还没有想法)' }])
           .map(t => `<div class="rct-item" style="cursor:default"><span>${t.name}</span><span class="sub">${t.text}</span></div>`).join('');
+      drawGuests();
     };
     w.refresh();
   }
@@ -242,6 +264,28 @@ export class Panels {
     const hist = document.createElement('div');
     hist.className = 'hint';
     el.appendChild(hist);
+    const finChart = document.createElement('canvas');
+    finChart.width = 230; finChart.height = 60;
+    finChart.style.cssText = 'width:230px;height:60px;background:rgba(20,24,34,0.8);border-radius:3px;margin-top:4px';
+    finChart.title = '近 12 个月净收支(绿盈红亏)';
+    el.appendChild(finChart);
+    const fc2d = finChart.getContext('2d');
+    const drawFin = () => {
+      fc2d.clearRect(0, 0, 230, 60);
+      const nets = eco.history.slice(-12).map(h =>
+        Object.entries(h).filter(([k]) => k !== '月份').reduce((s, [, v]) => s + v, 0));
+      if (!nets.length) return;
+      const maxAbs = Math.max(100, ...nets.map(Math.abs));
+      const bw = 230 / 12;
+      nets.forEach((v, i) => {
+        const hgt = Math.abs(v) / maxAbs * 26;
+        fc2d.fillStyle = v >= 0 ? '#7ec850' : '#e86a50';
+        if (v >= 0) fc2d.fillRect(i * bw + 2, 30 - hgt, bw - 4, hgt);
+        else fc2d.fillRect(i * bw + 2, 30, bw - 4, hgt);
+      });
+      fc2d.strokeStyle = 'rgba(255,255,255,0.3)';
+      fc2d.beginPath(); fc2d.moveTo(0, 30); fc2d.lineTo(230, 30); fc2d.stroke();
+    };
     w.refresh = () => {
       const c = eco.cur;
       d.innerHTML = `<div>现金:<b class="${eco.cash < 0 ? 'neg' : 'money'}">${eco.fmt(eco.cash)}</b>
@@ -252,7 +296,7 @@ export class Panels {
       hist.innerHTML = '<div class="rct-sep"></div><div>历史:' + eco.history.map(h =>
         `<div>${h.月份} ${Object.entries(h).filter(([k]) => k !== '月份').map(([k, v]) => `${k}${v >= 0 ? '+' : ''}${Math.round(v)}`).join(' / ')}</div>`
       ).join('').slice(0, 4000) + '</div>';
-      hist.previousSibling; // noop
+      drawFin();
     };
     w.refresh();
   }

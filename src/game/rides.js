@@ -84,7 +84,7 @@ export const RIDE_DEFS = [
     basePrice: 5, excitement: 0, intensity: 0, nausea: 0, build: (r, m) => buildStall(r, m, '伞'),
   },
   {
-    id: 'haunted', name: '鬼屋', kind: 'flat', cat: 'ride', desc: '阴森小屋,尖叫连连',
+    id: 'haunted', name: '鬼屋', kind: 'flat', cat: 'ride', desc: '阴森小屋,尖叫连连', indoor: true,
     w: 3, h: 3, cost: 1300, upkeep: 55, capacity: 10, duration: 14,
     basePrice: 3.5, excitement: 45, intensity: 28, nausea: 12, build: buildHaunted,
   },
@@ -1683,7 +1683,9 @@ export class Rides {
     if (peep.kid && inten > 55) return false;
     const match = 1 - Math.min(1, Math.abs(inten / 100 - (peep.thrill ?? 0.5)) * 1.6);
     const h = ((peep.id * 31 + ride.id * 17) % 100) / 100;
-    if (h > 0.25 + match * 0.75) return false;
+    let want = 0.25 + match * 0.75;
+    if (this.game.weather?.mode === 'rain') want += ride.def.indoor ? 0.25 : -0.1;   // 雨天室内设施吃香
+    if (h > want) return false;
     return peep.cash >= ride.price && ride.queue.length < ride.queueCells.length + 8 && peep.energy > 0.15;
   }
   joinQueue(peep, ride) {
