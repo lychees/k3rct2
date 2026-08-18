@@ -65,18 +65,30 @@ export function openRideWindow(game, wm, rideId) {
       const paintRow = document.createElement('div');
       paintRow.className = 'rct-row';
       paintRow.appendChild(document.createTextNode('涂装:'));
-      for (const col of [0xffffff, 0xd84a3a, 0xe87a30, 0xe8b830, 0x48b050, 0x3a7ad8, 0x8a5ad8, 0x303038]) {
-        const sw = document.createElement('button');
-        sw.className = 'rct-btn small';
-        sw.style.cssText = `width:20px;height:20px;padding:0;background:#${col.toString(16).padStart(6, '0')};border-color:rgba(255,255,255,0.35)`;
-        sw.title = col === 0xffffff ? '默认色' : '#' + col.toString(16).padStart(6, '0');
-        sw.addEventListener('click', () => {
-          game.dispatchAction({ type: 'ridePaint', rideId: ride.id, color: col });
-          game.audio?.play('click');
-          sync();
-        });
-        paintRow.appendChild(sw);
-      }
+      const picker = document.createElement('input');
+      picker.type = 'color';
+      picker.value = '#' + (ride.paint ?? 0xffffff).toString(16).padStart(6, '0');
+      picker.title = '任意颜色(真彩色)';
+      picker.style.cssText = 'width:44px;height:22px;padding:0;border:1px solid rgba(255,255,255,0.35);background:none;cursor:pointer';
+      picker.addEventListener('input', () => {   // 拖动时本地即时预览
+        const v = parseInt(picker.value.slice(1), 16);
+        ride.paint = v;
+        game.rides.applyPaint(ride);
+      });
+      picker.addEventListener('change', () => {   // 选定后走动作层(联机广播/存档)
+        game.dispatchAction({ type: 'ridePaint', rideId: ride.id, color: parseInt(picker.value.slice(1), 16) });
+        game.audio?.play('click');
+      });
+      const defBtn = document.createElement('button');
+      defBtn.className = 'rct-btn small';
+      defBtn.textContent = '默认';
+      defBtn.title = '恢复默认配色';
+      defBtn.addEventListener('click', () => {
+        picker.value = '#ffffff';
+        game.dispatchAction({ type: 'ridePaint', rideId: ride.id, color: 0xffffff });
+        game.audio?.play('click');
+      });
+      paintRow.append(picker, defBtn);
       el.appendChild(paintRow);
       const stats = document.createElement('div');
       stats.className = 'hint';
