@@ -131,11 +131,12 @@ export class SimHost {
         id: r.id, defId: r.def.id, x: r.x, y: r.y, status: r.status, price: r.price,
         guestsServed: r.guestsServed, incomeTotal: r.incomeTotal,
         reliability: r.reliability, broken: r.broken,
-        name: r.customName || null, paint: r.paint ?? null,
+        name: r.customName || null, paint: r.paint ?? null, age: r.ageMonths || 0,
         coaster: r.api?.serialize ? r.api.serialize() : null,
-        ...(r.custom ? {
-          custom: 1, complete: r.complete ? 1 : 0,
-          pieces: r.pieces.map(p => [p.t, p.x, p.y, p.h, p.dir]),
+        ...(r.custom || r.cableB ? {
+          custom: r.custom ? 1 : 0, complete: r.complete ? 1 : 0,
+          pieces: r.pieces ? r.pieces.map(p => [p.t, p.x, p.y, p.h, p.dir]) : null,
+          cableB: r.cableB || null,
           entrance: r.entrance, exit: r.exit,
           excitement: r.excitement, intensity: r.intensity, nausea: r.nausea,
         } : {}),
@@ -204,11 +205,12 @@ export class SimHost {
         id: r.id, defId: r.def.id, x: r.x, y: r.y, status: r.status, price: r.price,
         guestsServed: r.guestsServed, incomeTotal: r.incomeTotal,
         reliability: r.reliability, broken: r.broken,
-        name: r.customName || null, paint: r.paint ?? null,
+        name: r.customName || null, paint: r.paint ?? null, age: r.ageMonths || 0,
         coaster: r.api?.serialize ? r.api.serialize() : null,
-        ...(r.custom ? {
-          custom: 1, complete: r.complete ? 1 : 0,
-          pieces: r.pieces.map(p => [p.t, p.x, p.y, p.h, p.dir]),
+        ...(r.custom || r.cableB ? {
+          custom: r.custom ? 1 : 0, complete: r.complete ? 1 : 0,
+          pieces: r.pieces ? r.pieces.map(p => [p.t, p.x, p.y, p.h, p.dir]) : null,
+          cableB: r.cableB || null,
           entrance: r.entrance, exit: r.exit,
           excitement: r.excitement, intensity: r.intensity, nausea: r.nausea,
         } : {}),
@@ -292,8 +294,8 @@ export class SimHost {
     }
     const coasters = [];
     for (const r of g.rides.list) {
-      if (r.def.kind === 'coaster' && r.api?.state) {
-        coasters.push([r.id, Math.round(r.api.state.s * 100) / 100, r.api.state.mode]);
+      if ((r.def.kind === 'coaster' || r.def.kind === 'cable') && r.api?.state) {
+        coasters.push([r.id, Math.round(r.api.state.s * 100) / 100, r.api.state.mode, r.api.state.dir, r.api.state.stationIdx]);
       }
     }
     const rideStates = g.rides.list.map(r => [r.id, r.broken ? 1 : 0, Math.round(r.reliability ?? 95)]);

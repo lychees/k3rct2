@@ -68,7 +68,7 @@ export class Economy {
     const g = this.game;
     // 设施月度维护
     let upkeep = 0;
-    if (g.rides) for (const r of g.rides.list) upkeep += r.def.upkeep;
+    if (g.rides) for (const r of g.rides.list) { upkeep += r.def.upkeep; r.ageMonths = (r.ageMonths || 0) + 1; }   // 园龄+1月
     if (upkeep) this.spend(upkeep, '工资');
     // 员工工资
     if (g.staff) { const w2 = g.staff.monthlyWages(); if (w2) this.spend(w2, '工资'); }
@@ -83,6 +83,14 @@ export class Economy {
     if (this.loan > 0) this.spend(Math.max(1, Math.round(this.loan * 0.01)), '利息');
     // 天气轮转
     if (g.weather) g.weather.updateMonthly();
+    // 破产保护:现金跌破建造下限(-4900)即判负
+    const go2 = this.goal;
+    if (this.cash <= -4900 && !go2.won && !go2.lost) {
+      go2.lost = true;
+      g.messages?.add('资不抵债,公园破产了!');
+      g.audio?.play('lose');
+      g.ui?.panels?.open('gameover');
+    }
     // 剧本目标判定
     this.checkGoal(g);
     this._emit('month');
@@ -101,10 +109,12 @@ export class Economy {
       g.messages?.add(`达成目标!游客 ${guests}、评分 ${Math.round(this.parkRating)}` +
         (go.cash ? `、现金 ${this.fmt(this.cash)}` : '') + (unlock ? ' ' + unlock : '') + ' —— 干得漂亮!');
       g.audio?.play('win');
+      g.ui?.panels?.open('gameover');
     } else if (monthAbs > go.deadlineAbs) {
       go.lost = true;
       g.messages?.add(`未能按期完成目标(${go.text}),园区继续经营,再接再厉`);
       g.audio?.play('lose');
+      g.ui?.panels?.open('gameover');
     }
   }
 

@@ -27,6 +27,8 @@ export class Tools {
 
   setTool(tool) {
     this.tool = tool;
+    this._patrolStart = null;
+    this._cableA = null;
     this._clearGhost();
     if (!tool) this._clearCursor();
   }
@@ -114,6 +116,9 @@ export class Tools {
     if (!t) return;
     if (t.type === 'path') {
       this._do({ type: 'path', kind: t.kind, x: p.x, y: p.y }, e, drag);
+    } else if (t.type === 'buyland') {
+      if (drag) return;   // 购地不支持拖动连买
+      this._do({ type: 'buyLand', x: p.x, y: p.y }, e, false);
     } else if (t.type === 'addon') {
       this._do({ type: 'addon', addon: t.addon, x: p.x, y: p.y }, e, drag);
     } else if (t.type === 'scenery') {
@@ -122,6 +127,16 @@ export class Tools {
       if (drag) return;  // 设施不支持拖动
       if (DEF_BY_ID[t.id]?.custom) {
         this._do({ type: 'coasterBegin', id: t.id, x: p.x, y: p.y, dir: g.ui?.panels?.coasterDir ?? 1 }, e, false, true);
+      } else if (t.id === 'cablecar') {   // 缆车:两次点击定两个站台
+        if (!this._cableA) {
+          const chk = g.rides.canCableStation(p.x, p.y);
+          if (!chk.ok) { this._flash(chk.reason, e || this.mouse, true); g.audio?.play('error'); return; }
+          this._cableA = [p.x, p.y];
+          this._flash('再点第二个站台(须同一行/列)', e || this.mouse);
+          return;
+        }
+        this._do({ type: 'cablePlace', x1: this._cableA[0], y1: this._cableA[1], x2: p.x, y2: p.y }, e, false, true);
+        this._cableA = null;
       } else {
         this._do({ type: 'ridePlace', id: t.id, x: p.x, y: p.y }, e, false, true);
       }
@@ -136,6 +151,17 @@ export class Tools {
     } else if (t.type === 'inspect') {
       const w = g.world, i = w.idx(p.x, p.y);
       if (w.rideTile[i] !== -1) g.rides.openWindow(w.rideTile[i]);
+    } else if (t.type === 'patrol') {   // 巡逻区:两次点击定矩形
+      if (drag) return;
+      if (!this._patrolStart) {
+        this._patrolStart = [p.x, p.y];
+        this._flash('再点巡逻区的对角格', e || this.mouse);
+        return;
+      }
+      this._do({ type: 'staffArea', staffId: t.staffId, x0: this._patrolStart[0], y0: this._patrolStart[1], x1: p.x, y1: p.y }, e, false);
+      this._patrolStart = null;
+      this.clearTool();
+      g.ui?.refreshToolbar?.();
     }
   }
 
@@ -155,7 +181,7 @@ export class Tools {
     if (!drag) g.audio?.play(r.cost < 0 ? 'remove' : 'place');
     if (r.cost > 0 && !drag) this._flash('-' + g.economy.fmt(r.cost), e || this.mouse);
     else if (r.cost < 0 && !drag) this._flash('+' + g.economy.fmt(-r.cost), e || this.mouse);
-    if (a.type === 'ridePlace' || a.type === 'rideGate' || a.type === 'coasterBegin') { this.clearTool(); this._clearCursor(); g.ui?.refreshToolbar?.(); }
+    if (a.type === 'ridePlace' || a.type === 'rideGate' || a.type === 'coasterBegin' || a.type === 'cablePlace') { this.clearTool(); this._clearCursor(); g.ui?.refreshToolbar?.(); }
     if (a.type === 'coasterBegin') {   // 放好站台 → 打开编辑器继续铺轨(已开则不动,toggle 会误关)
       const p = g.ui?.panels;
       if (p && !p.wm.has('panel-coaster')) p.open('coaster');
@@ -216,6 +242,22 @@ export class Tools {
         text = valid ? `点击放置站台(朝向:${['东', '北', '西', '南'][g.ui?.panels?.coasterDir ?? 1]},编辑器可改)` : chk2.reason;
         const need = t.id === 'mycoaster' ? 'woodie' : t.id;
         if (valid && g.research && !g.research.unlocked(need)) { valid = false; text = '尚未研发该设施'; }
+      } else if (t.id === 'cablecar') {   // 缆车:两点选站台
+        tiles = [[p.x, p.y]];
+        const chk3 = g.rides.canCableStation(p.x, p.y);
+        valid = chk3.ok;
+        text = chk3.reason || '';
+        if (valid && this._cableA) {
+          const [ax2, ay2] = this._cableA;
+          tiles.push([ax2, ay2]);
+          const sameLine = ax2 === p.x || ay2 === p.y;
+          const dist = Math.abs(p.x - ax2) + Math.abs(p.y - ay2);
+          valid = sameLine && dist >= 3 && dist <= 26;
+          text = valid ? `第二站台:距 ${dist} 格,点击确定` : '第二站台须与第一个同一行/列,间距 3~26';
+        } else if (valid) {
+          text = this._cableA ? '' : '点击放第一个站台';
+        }
+        if (valid && g.research && !g.research.unlocked('cablecar')) { valid = false; text = '尚未研发该设施'; }
       } else {
         const chk = g.rides.validate(t.id, p.x, p.y);
         valid = chk.ok;
@@ -233,6 +275,18 @@ export class Tools {
         valid = chk.ok;
         text = valid ? `设${t.which === 'entrance' ? '入口' : '出口'}在这里` : (chk.reason || '移到设施边缘且外侧紧邻路径的格子');
       } else { tiles = []; valid = false; }
+    } else if (t.type === 'buyland') {
+      const x0 = p.x - 1, y0 = p.y - 1;
+      for (let y = y0; y < y0 + 3; y++) for (let x = x0; x < x0 + 3; x++) {
+        if (w.in(x, y) && !w.ownedAt(x, y)) tiles.push([x, y]);
+      }
+      let adj = false;
+      for (const [tx, ty] of tiles) {
+        for (let d = 0; d < 4; d++) if (w.ownedAt(tx + [1, 0, -1, 0][d], ty + [0, 1, 0, -1][d])) { adj = true; break; }
+        if (adj) break;
+      }
+      valid = tiles.length > 0 && adj;
+      text = valid ? `购地 $${30 * tiles.length}(与公园相邻)` : (tiles.length ? '只能购买与公园相邻的地' : '这里没有可购的地');
     } else if (t.type === 'remove') {
       tiles = [[p.x, p.y]];
       const i = w.idx(p.x, p.y);
@@ -241,6 +295,19 @@ export class Tools {
     } else if (t.type === 'inspect') {
       const i = w.idx(p.x, p.y);
       if (w.rideTile[i] !== -1) { tiles = [[]].length ? [] : g.rides.tilesOf(w.rideTile[i]); }
+    } else if (t.type === 'patrol') {
+      valid = true;
+      if (this._patrolStart) {   // 框选预览(上限 20×20 防卡)
+        const x0 = Math.min(this._patrolStart[0], p.x), x1 = Math.max(this._patrolStart[0], p.x);
+        const y0 = Math.min(this._patrolStart[1], p.y), y1 = Math.max(this._patrolStart[1], p.y);
+        if ((x1 - x0 + 1) * (y1 - y0 + 1) <= 400) {
+          for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) tiles.push([x, y]);
+        }
+        text = `巡逻区 ${x1 - x0 + 1}×${y1 - y0 + 1} · 再点确定`;
+      } else {
+        tiles = [[p.x, p.y]];
+        text = '点击巡逻区的一角';
+      }
     }
     this._drawCursor(tiles, valid);
     if (text) {

@@ -63,9 +63,9 @@ export class NetClient {
             if (ride) { ride.broken = !!broken; ride.reliability = rel; }
           }
         }
-        for (const [rid, s, mode] of m.coasters || []) {
+        for (const [rid, s, mode, dir, stationIdx] of m.coasters || []) {
           const ride = g.rides.findRide(rid);
-          if (ride && ride.api?.setExternal) ride.api.setExternal(s, mode);
+          if (ride && ride.api?.setExternal) ride.api.setExternal(s, mode, dir, stationIdx);
         }
         if (m.paused !== undefined) g.paused = !!m.paused;
         break;

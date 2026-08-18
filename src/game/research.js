@@ -32,6 +32,8 @@ export const RESEARCH_QUEUE = [
   { id: 'topspin', cost: 170 },
   { id: 'train', cost: 185 },
   { id: 'flume', cost: 200 },
+  { id: 'cablecar', cost: 150 },
+  { id: 'boats', cost: 130 },
 ];
 
 export class Research {

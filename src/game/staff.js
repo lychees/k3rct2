@@ -198,6 +198,7 @@ export class Staff {
       return;
     }
     if (!job || !dest) return;
+    if (s.area && (dest[0] < s.area[0] || dest[1] < s.area[1] || dest[0] > s.area[2] || dest[1] > s.area[3])) return;   // 区外任务不去
     const path = bfsPath(this.game.world, s.tile, dest);
     if (!path || path.length < 1) return;
     s.target = job;
@@ -297,11 +298,18 @@ export class Staff {
     const w = this.game.world;
     if (s.targetTile == null) {
       const [cx, cy] = s.tile;
+      // 巡逻区:在区外先回区
+      if (s.area && (cx < s.area[0] || cy < s.area[1] || cx > s.area[2] || cy > s.area[3])) {
+        const home = [Math.min(Math.max(cx, s.area[0]), s.area[2]), Math.min(Math.max(cy, s.area[1]), s.area[3])];
+        const path = bfsPath(w, s.tile, home);
+        if (path && path.length > 1) { s.targetTile = path[1]; return; }
+      }
       const opts = [];
       for (let d = 0; d < 4; d++) {
         const [nx, ny] = w.neighbor(cx, cy, d);
         if (w.in(nx, ny) && w.path[w.idx(nx, ny)] !== PATH.NONE) {
           if (s.prev && nx === s.prev[0] && ny === s.prev[1]) continue;
+          if (s.area && (nx < s.area[0] || ny < s.area[1] || nx > s.area[2] || ny > s.area[3])) continue;   // 巡逻区约束
           opts.push([nx, ny]);
         }
       }
@@ -455,7 +463,7 @@ export class Staff {
   serializeArea() {
     return {
       litter: encArr(this.world.litter), binFill: encArr(this.world.binFill),
-      staff: this.list.map(s => ({ id: s.id, role: s.role, x: Math.round(s.x * 100), z: Math.round(s.z * 100), tile: s.tile })),
+      staff: this.list.map(s => ({ id: s.id, role: s.role, x: Math.round(s.x * 100), z: Math.round(s.z * 100), tile: s.tile, area: s.area || null })),
       nextId: this.nextId,
     };
   }
@@ -474,6 +482,7 @@ export class Staff {
         yaw: 0, walkT: rand() * 9, state: 'wander', targetTile: null, target: null, workT: 0,
         speed: 2.6, hidden: false, hasSouvenir: false,
         shirt: def.shirt, skin: 0xf0c8a0, pants: def.pants, balloonCol: 0, capCol: 0xf0f0e8,
+        area: s.area || null,
       });
       this.nextId = Math.max(this.nextId, s.id + 1);
     }

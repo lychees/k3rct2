@@ -6,6 +6,7 @@ import { generateTerrain } from '../src/world/terraingen.js';
 import { Paths } from '../src/game/paths.js';
 import { Rides, DEF_BY_ID } from '../src/game/rides.js';
 import { Peeps } from '../src/game/peeps.js';
+import { Staff } from '../src/game/staff.js';
 import { Scenery } from '../src/game/scenery.js';
 import { Economy } from '../src/game/economy.js';
 import { Messages } from '../src/game/messages.js';
@@ -14,7 +15,7 @@ import { applyAction } from '../src/game/actions.js';
 import { SCENARIOS, applyScenario, unlockNext } from '../src/game/scenarios.js';
 import { canFinish } from '../src/game/coasterEdit.js';
 import { Sfx } from '../src/core/audio.js';
-import { PATH, TILE, H_UNIT } from '../src/config.js';
+import { PATH, TILE, H_UNIT, MAP_W, MAP_H } from '../src/config.js';
 
 const SECONDS = Number(process.argv[2] || 180);
 
@@ -28,6 +29,7 @@ game.paths = new Paths(world, scene);
 game.scenery = new Scenery(world, scene);
 game.rides = new Rides(game);
 game.peeps = new Peeps(game);
+game.staff = new Staff(game);
 
 const ex = world.entrance.x, ey = world.entrance.y;
 for (let x = ex - 8; x <= ex + 8; x++) game.paths.place(x, ey + 6, PATH.TARMAC);
@@ -159,9 +161,10 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
     ['train', ['flat', 'right', 'flat', 'right', 'flat', 'right', 'left', 'right', 'right']],
     ['flume', ['lift', 'lift', 'right', 'flat', 'right', 'down', 'down', 'flat', 'right', 'flat', 'right']],
     ['mycoaster+loop', ['lift', 'lift', 'right', 'flat', 'right', 'down', 'down', 'flat', 'right', 'loop', 'right']],
+    ['mycoaster+cork', ['lift', 'steepup', 'right', 'flat', 'right', 'steepdown', 'down', 'cork', 'right', 'flat', 'right']],
   ];
   for (const [defId, SEQ] of PLANS) {
-    const realDef = defId === 'mycoaster+loop' ? 'mycoaster' : defId;
+    const realDef = defId.startsWith('mycoaster') ? 'mycoaster' : defId;
     let anchor = null;
     outer2: for (let ay = ey + 16; ay < ey + 55; ay++) for (let ax = ex - 24; ax < ex + 20; ax++) {
       if (!game.rides.canBeginCustom(ax, ay).ok) continue;
@@ -275,6 +278,82 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
   assertT(r2.ok && ride.paint === 0x48b050, '设施涂装生效');
   const r3 = applyAction(game, { type: 'ridePaint', rideId: ride.id, color: 0xffffff }, true);
   assertT(r3.ok && ride.paint === 0xffffff, '涂装恢复默认');
+}
+
+// 设施老化与翻新
+{
+  const ride = game.rides.list[0];
+  ride.ageMonths = 30;
+  const eff = game.rides.effExcitement(ride);
+  assertT(eff < ride.excitement * 0.61, `老化:30 月兴奋度衰减到 ${(eff / ride.excitement * 100) | 0}%`);
+  const r = applyAction(game, { type: 'rideRenovate', rideId: ride.id }, true);
+  assertT(r.ok && ride.ageMonths === 0 && ride.reliability === 95, '翻新:园龄归零可靠度恢复');
+}
+// 购地扩建
+{
+  let spot = null;
+  outer4: for (let y = 1; y < MAP_H - 1; y++) for (let x = 1; x < MAP_W - 1; x++) {
+    if (game.world.ownedAt(x, y)) continue;
+    for (let d = 0; d < 4; d++) if (game.world.ownedAt(x + [1, 0, -1, 0][d], y + [0, 1, 0, -1][d])) { spot = [x, y]; break outer4; }
+  }
+  assertT(!!spot, '购地:找到相邻未购地');
+  if (spot) {
+    const before = game.world.owned.reduce((s, v) => s + v, 0);
+    const r = applyAction(game, { type: 'buyLand', x: spot[0], y: spot[1] }, true);
+    const after = game.world.owned.reduce((s, v) => s + v, 0);
+    assertT(r.ok && after > before, `购地:新增 ${after - before} 格`);
+  }
+}
+// 员工巡逻区
+{
+  game.staff.hire('handyman');
+  const s = game.staff.list[game.staff.list.length - 1];
+  const r = applyAction(game, { type: 'staffArea', staffId: s.id, x0: ex - 5, y0: ey + 2, x1: ex + 5, y1: ey + 8 }, true);
+  assertT(r.ok && s.area && s.area[0] === ex - 5, '巡逻区:划定生效');
+  const r2 = applyAction(game, { type: 'staffArea', staffId: s.id, clear: true }, true);
+  assertT(r2.ok && !s.area, '巡逻区:清除生效');
+}
+// 缆车:两点建索道并跑一趟
+{
+  let a = null, b2 = null;
+  outer5: for (let ay = ey + 16; ay < ey + 50; ay++) for (let ax = ex - 24; ax < ex + 20; ax++) {
+    if (!game.rides.canCableStation(ax, ay).ok) continue;
+    if (game.rides.canCableStation(ax + 6, ay).ok) { a = [ax, ay]; b2 = [ax + 6, ay]; break outer5; }
+  }
+  assertT(!!a, '缆车:找到两个站台位');
+  if (a) {
+    const r = applyAction(game, { type: 'cablePlace', x1: a[0], y1: a[1], x2: b2[0], y2: b2[1] }, true);
+    assertT(r.ok && r.ride.stations.length === 2, '缆车:索道建成');
+    const ride = r.ride;
+    ride.status = 'test';
+    let arrived = false;
+    for (let t = 0; t < 120 && !arrived; t += 1 / 15) {
+      ride.api.update(1 / 15, ride);
+      if (ride.api.state.stationIdx === 1) arrived = true;
+    }
+    assertT(arrived, '缆车:吊舱到达对岸');
+    game.rides.remove(ride.id);
+  }
+}
+// 脚踏船:邻水建码头,出船返航下客
+{
+  let spot = null;
+  outer6: for (let ay = ey + 10; ay < ey + 60; ay++) for (let ax = ex - 30; ax < ex + 30; ax++) {
+    if (game.rides.validate('boats', ax, ay).ok) { spot = [ax, ay]; break outer6; }
+  }
+  assertT(!!spot, '脚踏船:找到邻水码头位');
+  if (spot) {
+    const r = game.rides.place('boats', spot[0], spot[1]);
+    assertT(!!r.ok, '脚踏船:码头建成');
+    const ride = r.ride;
+    ride.status = 'open';
+    for (let i = 0; i < 4; i++) game.peeps.trySpawn();
+    const riders = game.peeps.list.slice(-4);
+    for (const p of riders) { p.tile = ride.entrance.outer.slice(); game.rides.joinQueue(p, ride); }
+    for (let t = 0; t < 200 && ride.guestsServed < 4; t += 1 / 15) game.rides.update(1 / 15);
+    assertT(ride.guestsServed >= 4, `脚踏船:出船返航下客(服务 ${ride.guestsServed})`);
+    game.rides.remove(ride.id);
+  }
 }
 
 // 音效:无 window 环境下所有预设安全空转(不抛异常)

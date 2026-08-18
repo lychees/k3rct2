@@ -2,17 +2,18 @@
 // - 单机:tools/UI 直接调用(charge=true,本地扣钱)
 // - 联机服务端:客户端发来动作 → 校验 + 从共享资金扣钱(charge=true)→ 广播
 // - 联机客户端:收到广播 → 复现世界变更(charge=false,经济由服务端包覆写)
-import { PATH, ADDON, PRICE, MIN_H, MAX_H } from '../config.js';
+import { PATH, ADDON, PRICE, MIN_H, MAX_H, MAP_W, MAP_H } from '../config.js';
 import { SCENERY_BY_ID } from './scenery.js';
 import { RESEARCH_QUEUE } from './research.js';
 import { DEF_BY_ID } from './rides.js';
+import { World } from '../world/world.js';
 
 export const ACTIONS = [
   'land', 'path', 'pathRemove', 'addon', 'addonRemove',
   'scenery', 'sceneryRemove', 'ridePlace', 'rideRemove', 'rideStatus', 'ridePrice', 'rideGate',
   'entranceFee', 'researchLevel', 'staffHire', 'staffFire', 'loanBorrow', 'loanRepay', 'parkOpen', 'pause', 'chat',
   'cheatMoney', 'researchAll', 'coasterBegin', 'coasterPiece', 'coasterUndo', 'coasterFinish',
-  'rideRename', 'ridePaint',
+  'rideRename', 'ridePaint', 'rideRenovate', 'buyLand', 'staffArea', 'cablePlace',
 ];
 
 export function applyAction(g, a, charge = true) {
@@ -146,6 +147,41 @@ export function applyAction(g, a, charge = true) {
       g.rides.applyPaint(ride);
       return { ok: true, cost: 0 };
     }
+    case 'rideRenovate': {   // 翻新:园龄归零、可靠度恢复
+      const ride = g.rides.findRide(a.rideId);
+      if (!ride) return fail('设施不存在');
+      const cost = g.rides.renovateCost(ride);
+      if (charge && eco.cash - cost < -5000) return fail('现金不足');
+      const r = g.rides.renovate(a.rideId);
+      if (charge) {
+        eco.spend(cost, '建设');
+        g.messages?.add(`「${ride.customName || ride.def.name}」翻新完成,恢复如新`);
+      }
+      return { ok: true, cost: r.cost };
+    }
+    case 'buyLand': {   // 购地:3×3 块,须与已有地相邻
+      const r = g.rides ? buyLandImpl(g, a.x, a.y) : { ok: false };
+      if (!r.ok) return fail(r.reason);
+      if (charge) eco.trySpend(r.cost, '建设');
+      return { ok: true, cost: r.cost };
+    }
+    case 'staffArea': {   // 员工巡逻区(矩形,或清除)
+      const s = g.staff?.list.find(s2 => s2.id === a.staffId);
+      if (!s) return fail('员工不存在');
+      if (a.clear) { s.area = null; return { ok: true, cost: 0 }; }
+      const x0 = Math.max(0, Math.min(a.x0, a.x1)), x1 = Math.min(MAP_W - 1, Math.max(a.x0, a.x1));
+      const y0 = Math.max(0, Math.min(a.y0, a.y1)), y1 = Math.min(MAP_H - 1, Math.max(a.y0, a.y1));
+      s.area = [x0, y0, x1, y1];
+      return { ok: true, cost: 0 };
+    }
+    case 'cablePlace': {   // 缆车:两站台直线
+      if (charge && g.research && !g.research.unlocked('cablecar')) return fail('尚未研发该设施');
+      const r = g.rides.placeCable(a.x1, a.y1, a.x2, a.y2, a.rideId);
+      if (!r.ok) return fail(r.reason);
+      a.rideId = r.ride.id;
+      if (charge) eco.trySpend(r.cost, '建设');
+      return { ok: true, cost: r.cost, ride: r.ride };
+    }
     case 'entranceFee': {
       g.economy.entranceFee = Math.max(0, Math.min(60, Math.round(a.value)));
       return { ok: true, cost: 0 };
@@ -273,3 +309,24 @@ export function applyAction(g, a, charge = true) {
 
 function fail(reason) { return { ok: false, reason: reason || '失败' }; }
 function clampInt(v, lo, hi) { v = Math.round(v || 1); return Math.max(lo, Math.min(hi, v)); }
+
+// 购地:3×3 块,至少一格与已有地相邻;$30/新格
+function buyLandImpl(g, x, y) {
+  const w = g.world;
+  const tiles = [];
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const tx = x + dx, ty = y + dy;
+    if (w.in(tx, ty) && !w.ownedAt(tx, ty)) tiles.push([tx, ty]);
+  }
+  if (!tiles.length) return { ok: false, reason: '这里没有可购的地' };
+  let adjacent = false;
+  outer: for (const [tx, ty] of tiles) {
+    for (let d = 0; d < 4; d++) {
+      if (w.ownedAt(tx + World.DX[d], ty + World.DY[d])) { adjacent = true; break outer; }
+    }
+  }
+  if (!adjacent) return { ok: false, reason: '只能购买与公园相邻的地' };
+  for (const [tx, ty] of tiles) w.owned[w.idx(tx, ty)] = 1;
+  w._ownedRev = (w._ownedRev || 0) + 1;   // 小地图底图据此重绘
+  return { ok: true, cost: 30 * tiles.length };
+}

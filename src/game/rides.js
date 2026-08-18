@@ -127,6 +127,16 @@ export const RIDE_DEFS = [
     w: 4, h: 2, cost: 1700, upkeep: 58, capacity: 8, duration: 13,
     basePrice: 4, excitement: 58, intensity: 64, nausea: 48, build: buildTopspin,
   },
+  {
+    id: 'cablecar', name: '观光缆车', kind: 'cable', cat: 'ride', desc: '两点一线,吊舱往返',
+    w: 1, h: 1, cost: 1200, upkeep: 50, capacity: 8, duration: 0,
+    basePrice: 3, excitement: 35, intensity: 12, nausea: 5, build: buildCableCar,
+  },
+  {
+    id: 'boats', name: '脚踏船', kind: 'boats', cat: 'ride', desc: '码头出发,湖上泛舟',
+    w: 1, h: 1, cost: 900, upkeep: 35, capacity: 16, duration: 25,
+    basePrice: 3, excitement: 38, intensity: 15, nausea: 6, build: buildBoats,
+  },
 ];
 export const DEF_BY_ID = Object.fromEntries(RIDE_DEFS.map(d => [d.id, d]));
 
@@ -679,6 +689,184 @@ function buildTopspin(ride, mat) {
   };
 }
 
+// 观光缆车:两站台 + 索道 + 往返吊舱(连续运转;上下客复用 _updateCoaster/trainStop)
+function buildCableCar(ride, mat, game) {
+  const g = new THREE.Group();
+  const b = new GeomBuilder();
+  const [bx, by] = ride.cableB;
+  // 组内局部坐标(原点 = 站台 A 锚点)
+  const cA = { x: TILE / 2, y: 0, z: TILE / 2 };
+  const cB = { x: (bx - ride.x) * TILE + TILE / 2, y: ride.baseYB - ride.baseY, z: (by - ride.y) * TILE + TILE / 2 };
+  const topA = cA.y + 3.6, topB = cB.y + 3.6;
+  for (const c of [cA, cB]) {
+    b.box(c.x, c.y + 0.06, c.z, TILE * 0.9, 0.14, TILE * 0.9, 0xb0a890, 1);      // 站台铺面
+    b.post(c.x, c.y, c.z, 0.16, 3.6, 0x3a6ad8, 1);                               // 主塔
+    b.bar([c.x - 0.7, c.y + 3.5, c.z], [c.x + 0.7, c.y + 3.5, c.z], 0.12, 0.12, 0x3a6ad8, 1);  // 横臂
+  }
+  // 双缆
+  b.bar([cA.x, topA, cA.z - 0.3], [cB.x, topB, cB.z - 0.3], 0.05, 0.05, 0x303038, 1);
+  b.bar([cA.x, topA, cA.z + 0.3], [cB.x, topB, cB.z + 0.3], 0.05, 0.05, 0x303038, 1);
+  g.add(meshOf(b, mat));
+  const cabins = [];
+  const cabCols = [0xd84a3a, 0xe8b830, 0x48b050, 0x3a7ad8];
+  for (let i = 0; i < 4; i++) {
+    const cab = new THREE.Group();
+    const cb = new GeomBuilder();
+    cb.post(0, -0.8, 0, 0.04, 0.8, 0x8a8d8f, 1);                                 // 吊臂
+    cb.box(0, -1.25, 0, 0.7, 0.6, 0.7, cabCols[i], 1);                           // 舱体
+    cab.add(meshOf(cb, mat));
+    g.add(cab);
+    cabins.push(cab);
+  }
+  const len = Math.hypot(cB.x - cA.x, cB.z - cA.z);
+  const state = { s: 0, v: 0, mode: 'load', timer: 0, stationIdx: 0, dir: 1 };
+  let external = null;
+  let cabT = 0;
+  const poseCabins = (u) => {
+    cabins.forEach((cab, k) => {
+      let t2 = (u + k / 4) % 2;
+      if (t2 > 1) t2 = 2 - t2;   // 三角波往返
+      cab.position.set(cA.x + (cB.x - cA.x) * t2, topA + (topB - topA) * t2, cA.z + (cB.z - cA.z) * t2);
+    });
+  };
+  return {
+    group: g,
+    state,
+    setExternal: (t, mode, dir, stationIdx) => { external = { t, mode, dir, stationIdx }; },
+    serialize: () => ({ s: state.s, mode: state.mode, dir: state.dir, stationIdx: state.stationIdx }),
+    restore: (d) => { if (d) { state.s = d.s || 0; state.mode = d.mode || 'load'; state.dir = d.dir || 1; state.stationIdx = d.stationIdx || 0; } },
+    update: (dt, rd) => {
+      cabT += dt * (0.3 + rd.animSpeed * 0.7) * 0.14;   // 吊舱连续往返
+      poseCabins(cabT);
+      if (external) {
+        state.s = external.t; state.mode = external.mode; state.dir = external.dir; state.stationIdx = external.stationIdx;
+        return;
+      }
+      if (state.mode === 'load') {
+        state.timer -= dt;
+        if (state.timer <= 0 && (rd.status === 'open' || rd.status === 'test')) {
+          if (rd.riders.length > 0 || rd.status === 'test') state.mode = 'run';
+          else state.timer = 0.5;
+        }
+      } else {
+        state.s += dt * 2.2 / Math.max(1, len);          // 2.2 匀速
+        if (state.s >= 1) {
+          state.s = 0;
+          state.stationIdx = state.dir > 0 ? 1 : 0;
+          state.dir *= -1;
+          state.mode = 'load';
+          state.timer = rd.status === 'open' ? 3.2 : 2.0;
+          game?.rides.trainStop(rd, state.stationIdx);   // 到站下车
+        }
+      }
+    },
+    // 游客落点:吊舱内(每舱 2 人)
+    riderPos(i, out) {
+      const cab = cabins[i % 4];
+      out.x = cab.position.x + (i & 1 ? 0.14 : -0.14);
+      out.y = cab.position.y - 1.05;
+      out.z = cab.position.z;
+    },
+  };
+}
+
+// 脚踏船:木码头 + 小船湖上漫游(到点返航下客)
+function buildBoats(ride, mat, game) {
+  const g = new THREE.Group();
+  const b = new GeomBuilder();
+  const cx = TILE / 2, cz = TILE / 2;
+  b.box(cx, 0.08, cz, TILE * 0.9, 0.16, TILE * 0.9, 0x9a7350, 1);      // 木码头
+  b.post(cx - 0.7, 0.1, cz - 0.7, 0.08, 1.0, 0x6d4522, 1);
+  b.post(cx + 0.7, 0.1, cz - 0.7, 0.08, 1.0, 0x6d4522, 1);
+  b.box(cx, 1.1, cz - 0.7, 1.7, 0.1, 0.5, 0xd84a3a, 1);                // 小棚
+  g.add(meshOf(b, mat));
+  const w = game.world;
+  const WATER_Y = WATER_H * H_UNIT + 0.05;
+  // 船(真实网格,4 艘)
+  const boats = [];
+  const boatCols = [0xd84a3a, 0x3a7ad8, 0x48b050, 0xe8b830];
+  for (let i = 0; i < 4; i++) {
+    const bb = new GeomBuilder();
+    bb.box(0, 0.12, 0, 0.7, 0.24, 1.3, boatCols[i], 1);   // 船身
+    bb.box(0, 0.3, -0.2, 0.6, 0.12, 0.5, 0xd8d0c0, 1);    // 座位
+    const mesh = meshOf(bb, mat);
+    g.add(mesh);
+    boats.push({ mesh, tile: null, prev: null, target: null, state: 'dock', riders: [], tripT: 0 });
+  }
+  // 泊船位:码头邻接的第一个水格
+  let home = null;
+  for (let d = 0; d < 4 && !home; d++) {
+    const [nx, ny] = w.neighbor(ride.x, ride.y, d);
+    if (w.in(nx, ny) && w.minH(nx, ny) < WATER_H) home = [nx, ny];
+  }
+  if (!home) home = [ride.x, ride.y];   // 兜底(校验已保证邻水)
+  const groupAbs = { x: World.tileToWorldX(ride.x), z: World.tileToWorldZ(ride.y) };   // group 位于锚点
+  for (const bt of boats) {
+    bt.tile = home.slice();
+    const c = w.tileCenter(home[0], home[1]);
+    bt.x = c.x + (Math.random() - 0.5) * 0.5; bt.z = c.z + (Math.random() - 0.5) * 0.5;
+    bt.mesh.position.set(bt.x - groupAbs.x, WATER_Y - ride.baseY, bt.z - groupAbs.z);   // 组内局部坐标
+  }
+  const waterNbs = (t) => {
+    const out = [];
+    for (let d = 0; d < 4; d++) {
+      const [nx, ny] = w.neighbor(t[0], t[1], d);
+      if (w.in(nx, ny) && w.minH(nx, ny) < WATER_H) out.push([nx, ny]);
+    }
+    return out;
+  };
+  return {
+    group: g,
+    boats,
+    update: (dt, rd) => {
+      for (const bt of boats) {
+        if (bt.state !== 'roam') continue;
+        bt.tripT += dt;
+        if (!bt.target) {
+          const nbs = waterNbs(bt.tile).filter(t => !(bt.prev && t[0] === bt.prev[0] && t[1] === bt.prev[1]));
+          const pool = nbs.length ? nbs : waterNbs(bt.tile);
+          if (!pool.length) continue;
+          if (bt.tripT > rd.def.duration) {
+            // 返航:选离泊船位最近的水格
+            let best = pool[0], bestD = 1e9;
+            for (const t of pool) {
+              const d = Math.abs(t[0] - home[0]) + Math.abs(t[1] - home[1]);
+              if (d < bestD) { bestD = d; best = t; }
+            }
+            bt.target = best;
+            if (bt.tripT > rd.def.duration * 2.5) { bt.target = home.slice(); }   // 兜底直线回
+          } else {
+            bt.target = pool[(Math.random() * pool.length) | 0];
+          }
+        }
+        const c = w.tileCenter(bt.target[0], bt.target[1]);
+        const dx2 = c.x - bt.x, dz2 = c.z - bt.z;
+        const d = Math.hypot(dx2, dz2);
+        if (d < 0.08) {
+          bt.prev = bt.tile; bt.tile = bt.target; bt.target = null;
+          // 到家 → 靠岸下客
+          if (bt.tripT > rd.def.duration && bt.tile[0] === home[0] && bt.tile[1] === home[1]) {
+            game.rides.boatDocked(rd, bt);
+          }
+          continue;
+        }
+        bt.x += dx2 / d * 1.4 * dt; bt.z += dz2 / d * 1.4 * dt;
+        bt.mesh.position.set(bt.x - groupAbs.x, WATER_Y - ride.baseY + Math.sin(bt.tripT * 2) * 0.03, bt.z - groupAbs.z);
+        bt.mesh.rotation.y = Math.atan2(dx2, dz2);
+      }
+    },
+    // 游客落点:各自船内(每船 4 人;组内局部坐标)
+    riderPos(i, out) {
+      const peep = ride.riders[i];
+      const bt = boats[peep?._boatIdx ?? 0] || boats[0];
+      const k = i % 4;
+      out.x = bt.mesh.position.x + (k & 1 ? 0.13 : -0.13);
+      out.y = WATER_Y - ride.baseY + 0.2;
+      out.z = bt.mesh.position.z + (k > 1 ? 0.28 : -0.28);
+    },
+  };
+}
+
 // 入口/出口小屋(几何以原点为中心,由 mesh.position 放到局部 tile 坐标)
 function buildHut(mat, colorHex) {  const b = new GeomBuilder();
   b.box(0, 0.6, 0, 1.3, 1.2, 1.1, 0xc8b890, 1);
@@ -758,6 +946,17 @@ export class Rides {
     // 出入口:有临路就自动选,没有也能放(之后用"设出入口"工具接入路径)
     const found = this._findGates(def, xs, ys);
     const spots = found || fallbackGates(def, xs, ys);
+    // 脚踏船:足迹须紧邻水面
+    if (def.kind === 'boats') {
+      let nearWater = false;
+      outer3: for (const [tx, ty] of tiles) {
+        for (let d = 0; d < 4; d++) {
+          const [nx, ny] = w.neighbor(tx, ty, d);
+          if (w.in(nx, ny) && w.minH(nx, ny) < WATER_H) { nearWater = true; break outer3; }
+        }
+      }
+      if (!nearWater) return { ok: false, reason: '码头必须紧邻水面', tiles };
+    }
     return { ok: true, tiles, gates: spots, flattenTiles, needGate: !found };
   }
 
@@ -785,6 +984,10 @@ export class Rides {
     if (!chk.ok) return chk;
     ride[which] = { inner: chk.inner, outer: chk.outer, dir: chk.dir };
     ride.needGate = false;
+    if (ride.cableB) {   // 缆车:站台外邻同步
+      ride.stations[which === 'entrance' ? 0 : 1].outer = chk.outer;
+      this._syncCableGates(ride);
+    }
     // 移动小屋 mesh
     const hut = ride.huts?.[which];
     if (hut) {
@@ -925,7 +1128,75 @@ export class Rides {
     return { ok: true, cost: def.cost, ride, needGate: !!v.needGate };
   }
 
-  // ---------- 定制过山车(轨道编辑器) ----------
+  // ---------- 观光缆车(两点一线) ----------
+  canCableStation(x, y) {
+    const w = this.game.world;
+    if (!w.in(x, y)) return { ok: false, reason: '超出地图' };
+    if (!w.ownedAt(x, y)) return { ok: false, reason: '不在公园范围内' };
+    if (!w.isClear(x, y)) return { ok: false, reason: '站台位置被占用' };
+    if (w.minH(x, y) < WATER_H) return { ok: false, reason: '水下不能建站台' };
+    return { ok: true };
+  }
+  placeCable(x1, y1, x2, y2, forcedId = null, restore = false) {
+    const w = this.game.world;
+    const def = DEF_BY_ID.cablecar;
+    if (!restore) {
+      if (!(x1 === x2 || y1 === y2)) return { ok: false, reason: '索道必须是直线(同一行/列)' };
+      const dist = Math.abs(x2 - x1) + Math.abs(y2 - y1);
+      if (dist < 3 || dist > 26) return { ok: false, reason: '站台间距需在 3~26 格' };
+      for (const [x, y] of [[x1, y1], [x2, y2]]) {
+        const c = this.canCableStation(x, y);
+        if (!c.ok) return c;
+      }
+    }
+    const ride = {
+      id: forcedId ?? this.nextId++, def, x: x1, y: y1,
+      cableB: [x2, y2],
+      baseY: w.maxH(x1, y1) * H_UNIT,
+      baseYB: w.maxH(x2, y2) * H_UNIT,
+      status: 'closed', price: def.basePrice,
+      guestsServed: 0, incomeTotal: 0,
+      queue: [], riders: [], animSpeed: 0, cycleT: 0, phase: 'idle',
+      entrance: { inner: [x1, y1], outer: [x1 - 1, y1], dir: 2 },
+      exit: { inner: [x2, y2], outer: [x2 + 1, y2], dir: 0 },
+      needGate: true,
+      reliability: 94 + (x1 * 7 + y1 * 13) % 5,
+      broken: false, breakdownT: 0,
+      excitement: def.excitement, intensity: def.intensity, nausea: def.nausea,
+      stations: [{ tiles: [[x1, y1]], outer: null }, { tiles: [[x2, y2]], outer: null }],
+      queues: null,
+    };
+    // 站点外邻自动识别(临路格)
+    ride.stations.forEach((st, i) => {
+      const [tx, ty] = st.tiles[0];
+      for (let d = 0; d < 4; d++) {
+        const [nx, ny] = w.neighbor(tx, ty, d);
+        if (w.in(nx, ny) && w.path[w.idx(nx, ny)] !== PATH.NONE && w.rideTile[w.idx(nx, ny)] === -1) { st.outer = [nx, ny]; break; }
+      }
+    });
+    ride.stations[0].outer = ride.stations[0].outer || ride.entrance.outer;
+    ride.stations[1].outer = ride.stations[1].outer || ride.exit.outer;
+    this._syncCableGates(ride);
+    ride.queues = [ride.queue, []];
+    if (forcedId != null) this.nextId = Math.max(this.nextId, forcedId + 1);
+    if (!restore) {
+      w.rideTile[w.idx(x1, y1)] = ride.id;
+      w.rideTile[w.idx(x2, y2)] = ride.id;
+    }
+    this._buildVisuals(ride);
+    this.list.push(ride);
+    this.computeQueueCells(ride);
+    if (restore) return ride;
+    return { ok: true, cost: def.cost, ride };
+  }
+  _syncCableGates(ride) {   // stations[].outer ↔ entrance/exit ↔ stationGateMap
+    ride.entrance.outer = ride.stations[0].outer;
+    ride.exit.outer = ride.stations[1].outer;
+    ride.stationGateMap = {};
+    ride.stations.forEach((st, i) => { if (st.outer) ride.stationGateMap[st.outer.join(',')] = i; });
+  }
+
+  // ---------- 定制轨道设施(轨道编辑器) ----------
   canBeginCustom(x, y) {
     const w = this.game.world;
     if (this.list.some(r => r.custom && !r.complete)) return { ok: false, reason: '先完成或拆除在建的过山车' };
@@ -1117,7 +1388,7 @@ export class Rides {
         group.position.set(0, 0, 0);   // 过山车构建用绝对世界坐标
       }
     } else {
-      api = def.build(ride, this.mat);
+      api = def.build(ride, this.mat, this.game);
       // 入口/出口小屋(可移动,记录引用)
       ride.huts = {};
       for (const [which, col] of [['entrance', 0x3a7ad8], ['exit', 0x8a5a30]]) {
@@ -1141,6 +1412,28 @@ export class Rides {
     if (!def) return;
     const w = this.game.world;
     let ride;
+    if (s.cableB) {   // 缆车:两站台记录(含出入口)
+      ride = this.placeCable(s.x, s.y, s.cableB[0], s.cableB[1], s.id, true);
+      Object.assign(ride, {
+        status: s.status || 'closed', price: s.price ?? ride.def.basePrice,
+        guestsServed: s.guestsServed || 0, incomeTotal: s.incomeTotal || 0,
+        reliability: s.reliability ?? 95, broken: !!s.broken,
+      });
+      if (s.entrance) ride.entrance = s.entrance;
+      if (s.exit) ride.exit = s.exit;
+      if (s.entrance?.outer) ride.stations[0].outer = s.entrance.outer;
+      if (s.exit?.outer) ride.stations[1].outer = s.exit.outer;
+      this._syncCableGates(ride);
+      for (const which of ['entrance', 'exit']) {   // 小屋对位
+        const hut = ride.huts?.[which];
+        if (hut) hut.position.set((ride[which].inner[0] - ride.x) * TILE + TILE / 2, 0, (ride[which].inner[1] - ride.y) * TILE + TILE / 2);
+      }
+      ride.customName = s.name || null;
+      ride.paint = s.paint ?? null;
+      ride.ageMonths = s.age || 0;
+      if (ride.paint != null) this.applyPaint(ride);
+      return ride;
+    }
     if (s.custom) {   // 定制过山车:轨道件与出入口来自存档
       ride = {
         id: s.id, def, x: s.x, y: s.y,
@@ -1175,6 +1468,7 @@ export class Rides {
     }
     ride.customName = s.name || null;
     ride.paint = s.paint ?? null;
+    ride.ageMonths = s.age || 0;
     this._buildVisuals(ride);
     this.list.push(ride);
     this.computeQueueCells(ride);
@@ -1203,6 +1497,10 @@ export class Rides {
       for (let ty = 0; ty < ride.def.h; ty++)
         for (let tx = 0; tx < ride.def.w; tx++)
           if (w.rideTile[w.idx(ride.x + tx, ride.y + ty)] === rideId) w.rideTile[w.idx(ride.x + tx, ride.y + ty)] = -1;
+      if (ride.cableB) {   // 缆车:第二个站台
+        const [bx, by] = ride.cableB;
+        if (w.in(bx, by) && w.rideTile[w.idx(bx, by)] === rideId) w.rideTile[w.idx(bx, by)] = -1;
+      }
       refund = Math.round(ride.def.cost * 0.55);
     }
     this.group.remove(ride.group);
@@ -1217,6 +1515,7 @@ export class Rides {
     const r = this.list.find(q => q.id === rideId);
     if (!r) return [];
     if (r.custom) return [...new Map(r.pieces.map(pc => [pc.x + ',' + pc.y, [pc.x, pc.y]])).values()];
+    if (r.cableB) return [[r.x, r.y], r.cableB];
     const out = [];
     for (let ty = 0; ty < r.def.h; ty++)
       for (let tx = 0; tx < r.def.w; tx++) out.push([r.x + tx, r.y + ty]);
@@ -1224,6 +1523,23 @@ export class Rides {
   }
 
   findRide(id) { return this.list.find(r => r.id === id); }
+
+  // 有效兴奋度:随园龄衰减(约 22 个月降到 55% 下限)
+  effExcitement(ride) {
+    return ride.excitement * Math.max(0.55, 1 - (ride.ageMonths || 0) * 0.02);
+  }
+  renovateCost(ride) {
+    const base = ride.custom ? ride.pieces.reduce((s, pc) => s + PIECE_BY_ID[pc.t].cost, 0) : ride.def.cost;
+    return Math.round(base * 0.35);
+  }
+  renovate(rideId) {   // 翻新:园龄归零、可靠度回 95、顺手修好故障
+    const ride = this.findRide(rideId);
+    if (!ride) return { ok: false, reason: '设施不存在' };
+    ride.ageMonths = 0;
+    ride.reliability = 95;
+    ride.broken = false;
+    return { ok: true, cost: this.renovateCost(ride) };
+  }
 
   // 队列格链:入口外邻 tile 往外沿 QUEUE 走到头/分叉;QUEUE 用完后沿路径继续延伸(溢出)
   computeQueueCells(ride) {
@@ -1323,11 +1639,12 @@ export class Rides {
         ride.reliability = Math.max(40, ride.reliability - dt * 2 / 45);   // ~2点/月
         ride.breakdownT += dt;
         const rel = ride.reliability / 100;
-        const p = (1 - rel) * (1 - rel) * 0.12 * dt * (ride.def.intensity > 30 ? 1.5 : 1);
+        const p = (1 - rel) * (1 - rel) * 0.12 * dt * (ride.def.intensity > 30 ? 1.5 : 1) * (1 + (ride.ageMonths || 0) * 0.06);
         if (this._rng() < p) this.breakdown(ride);
       }
       if (ride.broken) continue;
-      if (ride.def.kind === 'coaster') { this._updateCoaster(ride); continue; }
+      if (ride.def.kind === 'coaster' || ride.def.kind === 'cable') { this._updateCoaster(ride); continue; }
+      if (ride.def.kind === 'boats') { this._updateBoats(ride); continue; }
       if (ride.def.kind === 'shop') { this._updateShop(ride, dt); continue; }
       this._updateFlat(ride, dt);
     }
@@ -1342,6 +1659,7 @@ export class Rides {
       this.game.peeps.alightRide(peep, ride);
     }
     ride.riders.length = 0;
+    if (ride.api?.boats) for (const bt of ride.api.boats) { bt.riders.length = 0; bt.state = 'dock'; }   // 脚踏船清船
     for (const q of (ride.queues || [ride.queue])) for (const p of [...q]) this.game.peeps.releaseFromQueue(p);   // 故障清队
     this.game.messages?.add(`「${ride.def.name}」故障了!需要维修工`);
     this.game.economy?._emit?.('change');
@@ -1408,6 +1726,37 @@ export class Rides {
       this.game.peeps.serveAtShop(peep, ride);
       this._repositionQueue(ride);
     }
+  }
+  // 脚踏船:有空船在码头且有人排队 → 装 4 人出发
+  _updateBoats(ride) {
+    if (ride.status !== 'open') return;
+    const boats = ride.api?.boats;
+    if (!boats) return;
+    for (const bt of boats) {
+      if (bt.state !== 'dock' || bt.riders.length || !ride.queue.length) continue;
+      const n = Math.min(4, ride.queue.length);
+      for (let i = 0; i < n; i++) {
+        const peep = ride.queue.shift();
+        peep._boatIdx = boats.indexOf(bt);
+        bt.riders.push(peep);
+        ride.riders.push(peep);
+        this.game.peeps.boardRide(peep, ride);
+      }
+      bt.state = 'roam';
+      bt.tripT = 0;
+      this._repositionQueue(ride);
+    }
+  }
+  // 船回码头:下客结算(api 回调)
+  boatDocked(ride, bt) {
+    bt.state = 'dock';
+    const leaving = new Set(bt.riders);
+    ride.riders = ride.riders.filter(p => !leaving.has(p));
+    for (const peep of bt.riders) {
+      ride.guestsServed++;
+      this.game.peeps.alightRide(peep, ride, ride.exit.outer);
+    }
+    bt.riders.length = 0;
   }
   _repositionQueue(ride) {
     const qs = ride.queues || [ride.queue];

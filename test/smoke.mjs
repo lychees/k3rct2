@@ -89,7 +89,7 @@ game.research = research;
 ok(!research.unlocked('woodie'), '过山车初始未解锁');
 research.setLevel(3);
 let ticks = 0;
-while (research.current() && ticks < 15 * 800) { research.update(1 / 15); ticks++; }
+while (research.current() && ticks < 15 * 2400) { research.update(1 / 15); ticks++; }
 ok(RESEARCH_QUEUE.every(q => research.unlocked(q.id)), `拉满经费后全部研发完成(用时~${Math.round(ticks / 15)}s)`);
 // 过山车:扫描位置
 let woody = null;

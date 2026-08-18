@@ -6,14 +6,31 @@ export class Sfx {
     this.ctx = null;
     this._loops = {};      // 环境循环音(name → {gain, nodes...})
     try { this.muted = localStorage.getItem('rct2js-muted') === '1'; } catch { this.muted = false; }
+    try { this.volume = parseFloat(localStorage.getItem('rct2js-vol') ?? '0.8'); } catch { this.volume = 0.8; }
+    if (!Number.isFinite(this.volume)) this.volume = 0.8;
+  }
+  setVolume(v) {
+    this.volume = Math.max(0, Math.min(1, v));
+    try { localStorage.setItem('rct2js-vol', String(this.volume)); } catch { /* 忽略 */ }
+    if (this._masterGain) this._masterGain.gain.value = this.muted ? 0 : this.volume;
   }
   toggleMute() {
     this.muted = !this.muted;
     try { localStorage.setItem('rct2js-muted', this.muted ? '1' : '0'); } catch { /* 隐身模式等忽略 */ }
+    if (this._masterGain) this._masterGain.gain.value = this.muted ? 0 : this.volume;
     if (this.muted) for (const k in this._loops) {   // 静音即停所有环境音
       try { this._loops[k].gain.gain.value = 0; } catch { /* 忽略 */ }
     }
     return this.muted;
+  }
+  // 主音量总线(所有音效/环境音都经它)
+  _master(ctx) {
+    if (!this._masterGain) {
+      this._masterGain = ctx.createGain();
+      this._masterGain.gain.value = this.muted ? 0 : this.volume;
+      this._masterGain.connect(ctx.destination);
+    }
+    return this._masterGain;
   }
   _ensure() {
     if (typeof window === 'undefined') return null;
@@ -52,7 +69,7 @@ export class Sfx {
     if (f2) o.frequency.exponentialRampToValueAtTime(Math.max(30, f2), t0 + t);
     ga.gain.setValueAtTime(g, t0);
     ga.gain.exponentialRampToValueAtTime(0.0001, t0 + t);
-    o.connect(ga).connect(dest || ctx.destination);
+    o.connect(ga).connect(dest || this._master(ctx));
     o.start(t0); o.stop(t0 + t + 0.02);
   }
   _noise(ctx, { t = 0.15, g = 0.12, f = 800, at = 0 }) {
@@ -65,7 +82,7 @@ export class Sfx {
     const fl = ctx.createBiquadFilter();
     fl.type = 'lowpass'; fl.frequency.value = f;
     const ga = ctx.createGain(); ga.gain.value = g;
-    src.connect(fl); fl.connect(ga); ga.connect(ctx.destination);
+    src.connect(fl); fl.connect(ga); ga.connect(this._master(ctx));
     src.start(ctx.currentTime + at);
   }
 
@@ -104,7 +121,7 @@ export class Sfx {
       ga.gain.setValueAtTime(0.0001, t0);
       ga.gain.exponentialRampToValueAtTime(0.032, t0 + 0.06);
       ga.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-      o.connect(bp); bp.connect(ga); ga.connect(ctx.destination);
+      o.connect(bp); bp.connect(ga); ga.connect(this._master(ctx));
       o.start(t0); o.stop(t0 + dur + 0.05);
       lfo.start(t0); lfo.stop(t0 + dur + 0.05);
     }
@@ -141,7 +158,7 @@ export class Sfx {
       const fl = ctx.createBiquadFilter();
       fl.type = 'lowpass'; fl.frequency.value = cutoff;
       const ga = ctx.createGain(); ga.gain.value = 0;
-      src.connect(fl); fl.connect(ga); ga.connect(ctx.destination);
+      src.connect(fl); fl.connect(ga); ga.connect(this._master(ctx));
       src.start();
       L = this._loops[name] = { gain: ga, nodes: [src] };
     }
@@ -153,7 +170,7 @@ export class Sfx {
     if (!L && amt > 0.02) {
       const ga = ctx.createGain();
       ga.gain.value = 0;
-      ga.connect(ctx.destination);
+      ga.connect(this._master(ctx));
       L = this._loops.music = { gain: ga, step: 0, nextT: ctx.currentTime + 0.1 };
       L.timer = setInterval(() => this._musicStep(ctx), 120);
     }

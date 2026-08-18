@@ -13,6 +13,7 @@ const PANEL_POS = {
   park: [window.innerWidth - 320, 100], save: [90, 90], mp: [window.innerWidth - 320, 130],
   research: [230, 120], staff: [window.innerWidth - 360, 60], map: [60, 50],
   cheat: [window.innerWidth - 360, 140], levels: [270, 140], coaster: [300, 100],
+  settings: [window.innerWidth - 330, 170], gameover: [Math.max(80, window.innerWidth / 2 - 150), 200],
 };
 
 export class Panels {
@@ -39,6 +40,7 @@ export class Panels {
       land: '整地', scenery: '景观', path: '路径', rides: '游乐设施', shops: '商店',
       peeps: '游客', finance: '财务', park: '公园信息', save: '存档', mp: '联机', research: '研发',
       staff: '员工', map: '园区地图', cheat: '开发者控制台', levels: '关卡', coaster: '轨道编辑器',
+      settings: '设置', gameover: '剧本结算',
     }[name] || name;
   }
 
@@ -95,6 +97,7 @@ export class Panels {
     const sizeRow = [];
     for (let s = 1; s <= 5; s++) sizeRow.push(this._btn(`${s}×${s}`, e => { size = s; sync(null, e.target); }, 'small'));
     this._row(el, ...sizeRow);
+    this._row(el, this._btn('购地 $30/格(3×3)', e => this._selectTool({ type: 'buyland' }, e.target, el)));
     const sync = (modeBtn, sizeBtn) => {
       el.querySelectorAll('.rct-row')[0].querySelectorAll('.rct-btn').forEach(b => b.classList.remove('active'));
       el.querySelectorAll('.rct-row')[1].querySelectorAll('.rct-btn').forEach(b => b.classList.remove('active'));
@@ -414,10 +417,20 @@ export class Panels {
         const loc = document.createElement('button');
         loc.className = 'rct-btn small'; loc.textContent = '定位';
         loc.addEventListener('click', (ev) => { ev.stopPropagation(); g.camera.centerOnTile(s.tile[0], s.tile[1]); });
+        const areaB = document.createElement('button');
+        areaB.className = 'rct-btn small';
+        areaB.textContent = s.area ? '全区' : '划区';
+        areaB.title = s.area ? '清除巡逻区(全园巡逻)' : '划定巡逻区:地图上两次点击定矩形';
+        areaB.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          if (s.area) g.dispatchAction({ type: 'staffArea', staffId: s.id, clear: true });
+          else g.tools.setTool({ type: 'patrol', staffId: s.id });
+          w.refresh();
+        });
         const fire = document.createElement('button');
         fire.className = 'rct-btn small'; fire.textContent = '解雇';
         fire.addEventListener('click', (ev) => { ev.stopPropagation(); g.dispatchAction({ type: 'staffFire', id: s.id }); });
-        ops.append(loc, fire);
+        ops.append(loc, areaB, fire);
         item.appendChild(ops);
         list.appendChild(item);
       }
@@ -440,26 +453,32 @@ export class Panels {
       const ty = Math.floor((e.clientY - rect.top) / rect.height * 100);
       g.camera.centerOnTile(tx, ty);
     });
-    // 静态地形底图
+    // 静态地形底图(购地后按 ownedRev 重绘)
     const base = document.createElement('canvas');
     base.width = base.height = 200;
     const bx = base.getContext('2d');
     const w2 = g.world;
-    for (let y = 0; y < MAP_H; y++) {
-      for (let x = 0; x < MAP_W; x++) {
-        const i = w2.idx(x, y);
-        let c;
-        if (w2.base[i] < 4.5) c = '#2a5ab8';                  // 水
-        else if (w2.surf[i] === 1) c = '#8a6238';             // 泥
-        else if (w2.surf[i] === 2) c = '#d8c47c';             // 沙
-        else if (w2.surf[i] === 3) c = '#8a8d8f';             // 岩
-        else c = w2.owned[i] ? '#3d9c34' : '#2a6a26';         // 园内/外草
-        bx.fillStyle = c;
-        bx.fillRect(x * 2, y * 2, 2, 2);
+    let baseRev = -1;
+    const drawBase = () => {
+      baseRev = w2._ownedRev || 0;
+      for (let y = 0; y < MAP_H; y++) {
+        for (let x = 0; x < MAP_W; x++) {
+          const i = w2.idx(x, y);
+          let c;
+          if (w2.base[i] < 4.5) c = '#2a5ab8';                  // 水
+          else if (w2.surf[i] === 1) c = '#8a6238';             // 泥
+          else if (w2.surf[i] === 2) c = '#d8c47c';             // 沙
+          else if (w2.surf[i] === 3) c = '#8a8d8f';             // 岩
+          else c = w2.owned[i] ? '#3d9c34' : '#2a6a26';         // 园内/外草
+          bx.fillStyle = c;
+          bx.fillRect(x * 2, y * 2, 2, 2);
+        }
       }
-    }
+    };
+    drawBase();
     const ctx = cv.getContext('2d');
     w.refresh = () => {
+      if ((w2._ownedRev || 0) !== baseRev) drawBase();
       ctx.drawImage(base, 0, 0);
       // 路径
       ctx.fillStyle = '#e8e8e8';
@@ -598,6 +617,59 @@ export class Panels {
       status.innerHTML = `${d.def.name} · 段数 ${d.pieces.length} · 高度 ${head.h} · 朝向 ${DIRNM[head.dir]}` +
         (fin ? ' · <b class="pos">可闭环!</b>' : ' · 未闭环');
       finBtn.style.opacity = fin ? '1' : '0.45';
+    };
+    w.refresh();
+  }
+
+  // ---------- 设置 ----------
+  build_settings(el, w) {
+    const g = this.game;
+    const volRow = document.createElement('div');
+    volRow.className = 'rct-row';
+    volRow.appendChild(document.createTextNode('音量:'));
+    const vol = document.createElement('input');
+    vol.type = 'range'; vol.min = 0; vol.max = 100;
+    vol.value = Math.round((g.audio?.volume ?? 0.8) * 100);
+    vol.style.flex = '1';
+    vol.addEventListener('input', () => g.audio?.setVolume(vol.value / 100));
+    volRow.appendChild(vol);
+    el.appendChild(volRow);
+    this._row(el, this._btn('音效开/关(工具栏喇叭)', () => {
+      g.audio?.toggleMute();
+      g.ui.refreshToolbar();
+    }));
+    const keys = document.createElement('div');
+    keys.className = 'hint';
+    keys.style.fontSize = '11px';
+    keys.innerHTML = '<div class="rct-sep"></div><b>按键</b><br>' +
+      '平移:右键拖拽 / WASD / 方向键<br>旋转视角:Q / E · 缩放:滚轮<br>' +
+      '取消工具:Esc · 第一视角环视:左键拖动<br>点游客/员工:查看状态';
+    el.appendChild(keys);
+  }
+
+  // ---------- 剧本结算 ----------
+  build_gameover(el, w) {
+    const g = this.game, go = g.economy.goal;
+    const d = document.createElement('div');
+    d.style.minWidth = '250px';
+    el.appendChild(d);
+    const idx = SCENARIOS.findIndex(s => s.id === go.scenarioId);
+    const next = idx >= 0 ? SCENARIOS[idx + 1] : null;
+    this._row(el, this._btn('继续经营(沙盒)', () => g.ui.wm.close('panel-gameover')));
+    if (go.won && next) {
+      this._row(el, this._btn(`下一关:「${next.name}」`, () => {
+        if (confirm(`开始关卡「${next.name}」?当前公园进度将被覆盖`)) { g.saves?.clear(); location.href = '?new=1&lv=' + next.id; }
+      }));
+    }
+    if (go.scenarioId) {
+      this._row(el, this._btn('重玩本关', () => {
+        if (confirm('放弃当前进度,重开本关?')) { g.saves?.clear(); location.href = '?new=1&lv=' + go.scenarioId; }
+      }));
+    }
+    w.refresh = () => {
+      d.innerHTML = go.won
+        ? `<b class="pos">目标达成!</b><br>游客 ${g.peeps.list.length} · 评分 ${Math.round(g.economy.parkRating)}<br>干得漂亮!可以继续经营,也可以挑战下一关。`
+        : `<b class="neg">未能在期限内完成目标</b><br><span class="hint">${go.text}</span><br>公园仍可继续经营,或重开本关再试。`;
     };
     w.refresh();
   }

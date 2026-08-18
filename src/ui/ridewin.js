@@ -100,23 +100,28 @@ export function openRideWindow(game, wm, rideId) {
       const locate = document.createElement('button');
       locate.className = 'rct-btn small'; locate.textContent = '定位';
       locate.addEventListener('click', () => game.camera.centerOnTile(ride.x + ride.def.w / 2, ride.y + ride.def.h / 2));
+      const renov = document.createElement('button');
+      renov.className = 'rct-btn small';
+      renov.title = '园龄归零、可靠度恢复、故障修好';
+      renov.addEventListener('click', () => { game.dispatchAction({ type: 'rideRenovate', rideId: ride.id }); sync(); });
       const demolish = document.createElement('button');
       demolish.className = 'rct-btn small'; demolish.textContent = '拆除';
       demolish.addEventListener('click', () => {
         game.dispatchAction({ type: 'rideRemove', rideId: ride.id });
       });
-      ops.append(locate, demolish);
+      ops.append(locate, renov, demolish);
       el.appendChild(ops);
       const sync = () => {
         for (const [st, b] of Object.entries(btns)) b.classList.toggle('active', ride.status === st);
         priceLabel.textContent = game.economy.fmt(ride.price);
+        renov.textContent = `翻新 ${game.economy.fmt(game.rides.renovateCost(ride))}`;
         const entOk = game.rides.gateConnected(ride, 'entrance');
         const extOk = game.rides.gateConnected(ride, 'exit');
         gateInfo.textContent = `入口${entOk ? '✓' : '未接通'} 出口${extOk ? '✓' : '未接通'}`;
         gateInfo.style.color = entOk ? '#9fd0a0' : '#ff9a80';
         stats.innerHTML =
-          `兴奋度 ${ride.excitement.toFixed(0)} · 强度 ${ride.intensity.toFixed(0)} · 晕眩 ${ride.nausea.toFixed(0)}<br>` +
-          `排队 ${ride.queue.length} 人 · 累计接待 ${ride.guestsServed} 人<br>` +
+          `兴奋度 ${game.rides.effExcitement(ride).toFixed(0)} · 强度 ${ride.intensity.toFixed(0)} · 晕眩 ${ride.nausea.toFixed(0)}<br>` +
+          `园龄 ${ride.ageMonths || 0} 月 · 排队 ${ride.queue.length} 人 · 累计接待 ${ride.guestsServed} 人<br>` +
           `可靠度 ${Math.round(ride.reliability ?? 95)}%${ride.broken ? ' <b style="color:#ff6a50">故障中</b>' : ''}<br>` +
           `收入 <span class="pos">${game.economy.fmt(ride.incomeTotal)}</span> · 月维护 ${game.economy.fmt(ride.def.upkeep)}`;
       };

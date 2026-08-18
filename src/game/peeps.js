@@ -327,7 +327,7 @@ export class Peeps {
       peep.x = c.x; peep.z = c.z;
     }
     // 效果:开心/晕/渴/饿/票价值不值
-    const ex = ride.excitement / 100, iv = ride.intensity / 100, na = ride.nausea / 100;
+    const ex = (this.game.rides.effExcitement?.(ride) ?? ride.excitement) / 100, iv = ride.intensity / 100, na = ride.nausea / 100;
     // 偏好匹配:合口味的设施开心加成更高
     const match = 0.6 + (1 - Math.min(1, Math.abs((ride.intensity ?? 50) / 100 - (peep.thrill ?? 0.5)) * 1.6)) * 0.8;
     peep.happiness = Math.min(1, peep.happiness + ex * 0.28 * match - na * 0.06);

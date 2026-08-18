@@ -102,6 +102,13 @@ const ICONS = {
     g.beginPath(); g.arc(13, 12, 4, -0.9, 0.9); g.stroke();
     g.beginPath(); g.arc(13, 12, 7, -0.8, 0.8); g.stroke();
   }),
+  gear: () => mkIcon(g => {
+    C(g, 11, 11, 5.5, '#c8ccd8'); C(g, 11, 11, 2.2, '#161a24');
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * Math.PI * 2;
+      P(g, 11 + Math.cos(a) * 6.4 - 1.2, 11 + Math.sin(a) * 6.4 - 1.2, 2.4, 2.4, '#c8ccd8');
+    }
+  }),
 };
 
 export class Toolbar {
@@ -148,6 +155,7 @@ export class Toolbar {
       if (g.audio) g.audio.toggleMute();
       this.refresh();
     });
+    this._add('settings', ICONS.gear(), '设置', () => g.ui.panels.open('settings'));
     this._add('pause', ICONS.pause(), '暂停', () => {
       g.dispatchAction({ type: 'pause', value: !g.paused });
       this.refresh();
