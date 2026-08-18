@@ -6,7 +6,7 @@ import { RESEARCH_LEVELS, RESEARCH_QUEUE } from '../game/research.js';
 import { SCENARIOS, maxUnlocked } from '../game/scenarios.js';
 import { ACH_DEFS } from '../game/achievements.js';
 import { peekSave, currentSlot, setCurrentSlot } from '../game/save.js';
-import { COASTER_PIECES, TRACK_STYLES, canFinish } from '../game/coasterEdit.js';
+import { COASTER_PIECES, TRACK_STYLES, canFinish, findClosure } from '../game/coasterEdit.js';
 import { STAFF_ROLES } from '../game/staff.js';
 
 const PANEL_POS = {
@@ -16,6 +16,7 @@ const PANEL_POS = {
   research: [230, 120], staff: [window.innerWidth - 360, 60], map: [60, 50],
   cheat: [window.innerWidth - 360, 140], levels: [270, 140], coaster: [300, 100],
   settings: [window.innerWidth - 330, 170], gameover: [Math.max(80, window.innerWidth / 2 - 150), 200],
+  notices: [window.innerWidth - 380, 110],
 };
 
 export class Panels {
@@ -42,7 +43,7 @@ export class Panels {
       land: '整地', scenery: '景观', path: '路径', rides: '游乐设施', shops: '商店',
       peeps: '游客', finance: '财务', park: '公园信息', save: '存档', mp: '联机', research: '研发',
       staff: '员工', map: '园区地图', cheat: '开发者控制台', levels: '关卡', coaster: '轨道编辑器',
-      settings: '设置', gameover: '剧本结算',
+      settings: '设置', gameover: '剧本结算', notices: '通知中心',
     }[name] || name;
   }
 
@@ -266,14 +267,35 @@ export class Panels {
       g.dispatchAction({ type: 'parkOpen', value: !eco.parkOpen });
     });
     this._row(el, openBtn);
+    const chart = document.createElement('canvas');
+    chart.width = 210; chart.height = 48;
+    chart.style.cssText = 'width:210px;height:48px;background:rgba(20,24,34,0.8);border-radius:3px;margin-top:4px';
+    chart.title = '公园评分走势(每月采样)';
+    el.appendChild(chart);
+    const c2d = chart.getContext('2d');
+    const drawChart = () => {
+      c2d.clearRect(0, 0, 210, 48);
+      const hist = eco.ratingHistory || [];
+      if (hist.length < 2) return;
+      c2d.strokeStyle = '#7ec850';
+      c2d.lineWidth = 1.5;
+      c2d.beginPath();
+      hist.forEach((v, i) => {
+        const x = i / (hist.length - 1) * 204 + 3;
+        const y = 45 - (Math.max(0, Math.min(999, v)) / 999) * 42;
+        if (i === 0) c2d.moveTo(x, y); else c2d.lineTo(x, y);
+      });
+      c2d.stroke();
+    };
     w.refresh = () => {
       const rating = Math.round(eco.parkRating);
       const stars = '★'.repeat(Math.max(1, Math.round(rating / 200))) + '☆'.repeat(5 - Math.max(1, Math.round(rating / 200)));
       const wName = { sun: '晴', cloud: '阴', rain: '雨' }[g.weather?.mode || 'sun'];
+      const fName = { sun: '晴', cloud: '阴', rain: '雨' }[g.weather?.forecast?.() || 'sun'];
       const go = eco.goal;
       const goalText = go.won ? '<span class="pos">已达成!</span>' : go.lost ? '<span class="neg">未达成</span>' : '<span class="money">进行中</span>';
       openBtn.textContent = eco.parkOpen ? '暂停开放(暂停进新游客)' : '重新开放迎客';
-      d.innerHTML = `<div>日期:${eco.dateStr()} · 天气:${wName}</div>
+      d.innerHTML = `<div>日期:${eco.dateStr()} · 天气:${wName}(下月:${fName})</div>
         <div>公园评分:<b class="${rating >= 500 ? 'pos' : 'neg'}">${rating}</b> <span class="money">${stars}</span></div>
         <div>开放设施:${g.rides.list.filter(r => r.status === 'open' && !r.broken).length} / ${g.rides.list.length}</div>
         <div>游客数:${g.peeps.list.length}</div>
@@ -284,6 +306,7 @@ export class Panels {
         <div class="rct-sep"></div>
         <div>成就 ${(g.achievements || new Set()).size}/${ACH_DEFS.length}</div>` +
         ACH_DEFS.map(a => `<div style="font-size:11px" class="${g.achievements?.has(a.id) ? 'pos' : 'hint'}">${g.achievements?.has(a.id) ? '✓' : '·'} ${a.name} — ${a.desc}</div>`).join('');
+      drawChart();
     };
     w.refresh();
   }
@@ -588,6 +611,19 @@ export class Panels {
       const d = draft();
       if (d) { const r = g.dispatchAction({ type: 'coasterUndo', rideId: d.id }); if (!r?.ok) msg.textContent = r?.reason || ''; w.refresh(); }
     }, 'small');
+    const autoBtn = this._btn('自动闭环', () => {
+      const d = draft();
+      if (!d) return;
+      const seq = findClosure(d, g.world);
+      if (!seq) { msg.textContent = '找不到可行回路,撤销几段或调整后再试'; return; }
+      if (!seq.length) { msg.textContent = '已经可以闭环了'; return; }
+      if (!confirm(`自动铺设 ${seq.length} 段接回站台?(按段计费)`)) return;
+      for (const t of seq) {
+        const r = g.dispatchAction({ type: 'coasterPiece', rideId: d.id, piece: t });
+        if (!r?.ok) { msg.textContent = r?.reason || '铺设失败'; break; }
+      }
+      w.refresh();
+    }, 'small');
     const finBtn = this._btn('完成闭环', () => {
       const d = draft();
       if (d) { const r = g.dispatchAction({ type: 'coasterFinish', rideId: d.id }); if (!r?.ok) msg.textContent = r?.reason || ''; w.refresh(); }
@@ -596,7 +632,7 @@ export class Panels {
       const d = draft();
       if (d && confirm('拆除在建的过山车?返还 55% 造价')) { g.dispatchAction({ type: 'rideRemove', rideId: d.id }); w.refresh(); }
     }, 'small');
-    opRow.append(undoBtn, finBtn, delBtn);
+    opRow.append(undoBtn, autoBtn, finBtn, delBtn);
     el.appendChild(opRow);
     w.refresh = () => {
       const d = draft();
@@ -626,6 +662,37 @@ export class Panels {
     w.refresh();
   }
 
+  // ---------- 通知中心 ----------
+  build_notices(el, w) {
+    const g = this.game;
+    const list = document.createElement('div');
+    list.className = 'rct-list';
+    list.style.maxHeight = '260px';
+    list.style.minWidth = '280px';
+    list.style.fontSize = '12px';
+    el.appendChild(list);
+    w.refresh = () => {
+      list.innerHTML = '';
+      const msgs = (g.messages?.list || []).slice(-22).reverse();
+      if (!msgs.length) {
+        list.innerHTML = '<div class="rct-item"><span class="sub">还没有通知</span></div>';
+        return;
+      }
+      for (const m of msgs) {
+        const item = document.createElement('div');
+        item.className = 'rct-item';
+        item.style.cursor = m.rideId != null ? 'pointer' : 'default';
+        item.innerHTML = `<span>${m.text}</span>`;
+        if (m.rideId != null) {
+          item.title = '点击打开该设施窗口';
+          item.addEventListener('click', () => g.ui.rideWindow(m.rideId));
+        }
+        list.appendChild(item);
+      }
+    };
+    w.refresh();
+  }
+
   // ---------- 设置 ----------
   build_settings(el, w) {
     const g = this.game;
@@ -639,6 +706,49 @@ export class Panels {
     vol.addEventListener('input', () => g.audio?.setVolume(vol.value / 100));
     volRow.appendChild(vol);
     el.appendChild(volRow);
+    // 游客上限(调低可省性能)
+    const capRow = document.createElement('div');
+    capRow.className = 'rct-row';
+    capRow.appendChild(document.createTextNode('游客上限:'));
+    const capSel = document.createElement('select');
+    capSel.style.cssText = 'flex:1;background:rgba(20,24,34,0.8);color:#e8e6d0;border:1px solid rgba(255,255,255,0.25);border-radius:3px;padding:3px';
+    for (const v of [120, 180, 260]) {
+      const o = document.createElement('option');
+      o.value = String(v); o.textContent = `${v} 人`;
+      capSel.appendChild(o);
+    }
+    let capCur = 260;
+    try { capCur = parseInt(localStorage.getItem('rct2js-peepcap') || '260', 10) || 260; } catch { /* 忽略 */ }
+    capSel.value = String(capCur);
+    capSel.addEventListener('change', () => {
+      const v = parseInt(capSel.value, 10);
+      try { localStorage.setItem('rct2js-peepcap', String(v)); } catch { /* 忽略 */ }
+      if (g.peeps && g.peeps.cap !== undefined) g.peeps.cap = v;
+      g.messages.add(`游客上限调整为 ${v}(只影响新游客入园)`);
+    });
+    capRow.appendChild(capSel);
+    el.appendChild(capRow);
+    // 画质
+    const qRow = document.createElement('div');
+    qRow.className = 'rct-row';
+    qRow.appendChild(document.createTextNode('画质:'));
+    const qSel = document.createElement('select');
+    qSel.style.cssText = capSel.style.cssText;
+    for (const [v, nm] of [['high', '高(设备像素)'], ['low', '低(1×,更流畅)']]) {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = nm;
+      qSel.appendChild(o);
+    }
+    let qCur = 'high';
+    try { qCur = localStorage.getItem('rct2js-quality') || 'high'; } catch { /* 忽略 */ }
+    qSel.value = qCur;
+    qSel.addEventListener('change', () => {
+      try { localStorage.setItem('rct2js-quality', qSel.value); } catch { /* 忽略 */ }
+      g.renderer.setPixelRatio(qSel.value === 'low' ? 1 : Math.min(window.devicePixelRatio, 2));
+      window.dispatchEvent(new Event('resize'));
+    });
+    qRow.appendChild(qSel);
+    el.appendChild(qRow);
     this._row(el, this._btn('音效开/关(工具栏喇叭)', () => {
       g.audio?.toggleMute();
       g.ui.refreshToolbar();

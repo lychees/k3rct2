@@ -114,6 +114,13 @@ const ICONS = {
       P(g, 11 + Math.cos(a) * 6.4 - 1.2, 11 + Math.sin(a) * 6.4 - 1.2, 2.4, 2.4, '#c8ccd8');
     }
   }),
+  bell: () => mkIcon(g => {
+    g.fillStyle = '#e8b830';
+    g.beginPath(); g.arc(11, 12, 6.5, Math.PI, 0); g.fill();      // 铃身
+    P(g, 4.5, 12, 13, 3, '#e8b830');                              // 沿
+    C(g, 11, 17, 2.2, '#c09a28');                                 // 锤
+    P(g, 9.5, 3.5, 3, 2, '#c09a28');                              // 顶
+  }),
 };
 
 export class Toolbar {
@@ -161,6 +168,7 @@ export class Toolbar {
       this.refresh();
     });
     this._add('settings', ICONS.gear(), '设置', () => g.ui.panels.open('settings'));
+    this._add('notices', ICONS.bell(), '通知中心', () => g.ui.panels.open('notices'));
     this._add('pause', ICONS.pause(), '暂停', () => {
       g.dispatchAction({ type: 'pause', value: !g.paused });
       this.refresh();

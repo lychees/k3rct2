@@ -15,6 +15,7 @@ export class Peeps {
     this.nextId = 1;
     this.nextGroupId = 1;   // 家庭组编号
     this.spawnTimer = 3;
+    this.cap = PEEP.MAX;    // 游客上限(设置面板可调低)
     this.gateMap = new Map();   // "x,y" → ride(入口外邻格 → ride)
     this.renderer = game.headless ? null : new PeepRenderer(game);
   }

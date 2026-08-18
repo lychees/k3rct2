@@ -13,7 +13,7 @@ import { Messages } from '../src/game/messages.js';
 import { Research, RESEARCH_QUEUE } from '../src/game/research.js';
 import { applyAction } from '../src/game/actions.js';
 import { SCENARIOS, applyScenario, unlockNext } from '../src/game/scenarios.js';
-import { canFinish } from '../src/game/coasterEdit.js';
+import { canFinish, findClosure } from '../src/game/coasterEdit.js';
 import { checkAchievements } from '../src/game/achievements.js';
 import { Sfx } from '../src/core/audio.js';
 import { PATH, TILE, H_UNIT, MAP_W, MAP_H } from '../src/config.js';
@@ -280,6 +280,38 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
   assertT(r2.ok && ride.paint === 0x48b050, '设施涂装生效');
   const r3 = applyAction(game, { type: 'ridePaint', rideId: ride.id, color: 0xffffff }, true);
   assertT(r3.ok && ride.paint === 0xffffff, '涂装恢复默认');
+}
+
+// 轨道编辑器:自动闭环搜索
+{
+  const FULL = ['lift', 'lift', 'right', 'flat', 'right', 'down', 'down', 'flat', 'right', 'flat', 'right'];
+  const PART = FULL.slice(0, 9);   // 故意缺最后 2 段
+  let anchor = null;
+  outer8: for (let ay = ey + 16; ay < ey + 55; ay++) for (let ax = ex - 24; ax < ex + 20; ax++) {
+    if (!game.rides.canBeginCustom(ax, ay).ok) continue;
+    const fake = { def: DEF_BY_ID.mycoaster, pieces: [{ t: 'station', x: ax, y: ay, h: 0, dir: 1 }], baseY: game.world.maxH(ax, ay) * H_UNIT, custom: true, complete: false };
+    let okAll = true;
+    for (const t of FULL) {
+      const chk = game.rides.canAddPiece(fake, t);
+      if (!chk.ok) { okAll = false; break; }
+      fake.pieces.push({ t, x: chk.x, y: chk.y, h: chk.h, dir: chk.dir });
+    }
+    if (okAll) { anchor = [ax, ay]; break outer8; }
+  }
+  assertT(!!anchor, '自动闭环:找到可建位置');
+  if (anchor) {
+    const b = game.rides.beginCustom('mycoaster', anchor[0], anchor[1], 1);
+    const ride = b.ride;
+    for (const t of PART) game.rides.addPiece(ride.id, t);
+    const seq = findClosure(ride, game.world);
+    assertT(!!seq && seq.length >= 1, `自动闭环:搜索到 ${seq ? seq.length : 0} 段`);
+    if (seq) {
+      let okAll = true;
+      for (const t of seq) { const r = game.rides.addPiece(ride.id, t); if (!r.ok) { okAll = false; break; } }
+      assertT(okAll && canFinish(ride), '自动闭环:补齐后可闭环');
+    }
+    game.rides.remove(ride.id);
+  }
 }
 
 // 多列车:长轨道自动上第二列,闭塞保持间距

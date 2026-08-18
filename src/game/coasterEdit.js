@@ -2,7 +2,7 @@
 // 三种风格(TRACK_STYLES):过山车(重力物理)、观光小火车(匀速巡游)、激流勇进(水槽+提升坡+俯冲)。
 // 轨道直接按件采样成折线(不经过样条),lift/刹车/站台区域与件一一对应,物理边界精确。
 import * as THREE from 'three';
-import { TILE, H_UNIT, COL, WATER_H } from '../config.js';
+import { TILE, H_UNIT, COL, WATER_H, PATH } from '../config.js';
 import { GeomBuilder } from '../render/geom.js';
 import { World } from '../world/world.js';
 
@@ -467,6 +467,51 @@ export function buildCustomCoaster(game, ride) {
       out.z = car.position.z + (q > 1 ? 0.3 : 0);
     },
   };
+}
+
+// 自动闭环:A* 搜索从轨道头接回站台的件序列(平直/上下坡/左右弯);找不到返回 null
+export function findClosure(ride, w) {
+  const first = ride.pieces[0];
+  const goal = { x: first.x, y: first.y, dir: first.dir, h: first.h };
+  const start = exitOf(ride.pieces[ride.pieces.length - 1]);
+  if (start.x === goal.x && start.y === goal.y && start.dir === goal.dir && start.h === goal.h) return [];
+  const TYPES = ['flat', 'up', 'down', 'left', 'right'];
+  const key = (s) => `${s.x},${s.y},${s.dir},${s.h}`;
+  const open = [{ ...start, seq: [], f: 0 }];
+  const best = new Map([[key(start), 0]]);
+  let expansions = 0;
+  while (open.length && expansions < 9000) {
+    let bi = 0;
+    for (let i = 1; i < open.length; i++) if (open[i].f < open[bi].f) bi = i;
+    const cur = open.splice(bi, 1)[0];
+    expansions++;
+    for (const t of TYPES) {
+      const def = PIECE_BY_ID[t];
+      const h2 = cur.h + (def.dH || 0);
+      if (h2 < 0 || h2 > MAX_LEVEL) continue;
+      const outDir = def.turn ? (cur.dir + def.turn + 4) % 4 : cur.dir;
+      const nx = cur.x + World.DX[outDir], ny = cur.y + World.DY[outDir];
+      if (nx === goal.x && ny === goal.y && outDir === goal.dir && h2 === goal.h) return [...cur.seq, t];
+      if (cur.seq.length >= 42) continue;
+      // 世界约束(与 canAddPiece 同向:范围内/自有地/无占用/不埋地/不压路)
+      if (!w.in(nx, ny) || !w.ownedAt(nx, ny)) continue;
+      const k2 = w.idx(nx, ny);
+      if (w.rideTile[k2] !== -1 || w.obj[k2] !== 0 || w.path[k2] !== PATH.NONE) continue;
+      const lo = Math.min(cur.h, h2);
+      if (ride.baseY + lo * H_UNIT < w.maxH(nx, ny) * H_UNIT - 0.05) continue;
+      let selfHit = false;
+      for (const pc of ride.pieces) {
+        if (pc.x === nx && pc.y === ny && Math.abs(pc.h - h2) < 2) { selfHit = true; break; }
+      }
+      if (selfHit) continue;
+      const k = `${nx},${ny},${outDir},${h2}`;
+      if (best.has(k) && best.get(k) <= cur.seq.length + 1) continue;
+      best.set(k, cur.seq.length + 1);
+      const dh = Math.abs(nx - goal.x) + Math.abs(ny - goal.y) + Math.abs(h2 - goal.h) * 2 + (outDir !== goal.dir ? 0.6 : 0);
+      open.push({ x: nx, y: ny, dir: outDir, h: h2, seq: [...cur.seq, t], f: cur.seq.length + 1 + dh });
+    }
+  }
+  return null;
 }
 
 // 幽灵预览:当前段列表 + 候选下一段的线框(编辑器用)

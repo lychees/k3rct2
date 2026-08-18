@@ -13,19 +13,25 @@ export class Weather {
 
   // 权威侧(单机/服务器),每次月结调用
   updateMonthly() {
+    if (this._next) {   // 应用上月预告
+      const next = this._next;
+      if (next !== this.mode) {
+        this.mode = next;
+        const msg = next === 'rain' ? '开始下雨了!游客会被淋湿,伞具店要生意了' : next === 'sun' ? '天晴了' : '天阴下来了';
+        this.game.messages?.add(msg);
+        this.game.economy?._emit?.('change');
+      }
+    }
+    this._next = this._rollNext();   // 预掷下月(供预告)
+  }
+  _rollNext() {
     const r = Math.random();
     const cur = this.mode;
-    let next = cur;
-    if (cur === 'sun') next = r < 0.62 ? 'sun' : r < 0.87 ? 'cloud' : 'rain';
-    else if (cur === 'cloud') next = r < 0.42 ? 'sun' : r < 0.80 ? 'cloud' : 'rain';
-    else next = r < 0.30 ? 'cloud' : r < 0.42 ? 'sun' : 'rain';
-    if (next !== this.mode) {
-      this.mode = next;
-      const msg = next === 'rain' ? '开始下雨了!游客会被淋湿,伞具店要生意了' : next === 'sun' ? '天晴了' : '天阴下来了';
-      this.game.messages?.add(msg);
-      this.game.economy?._emit?.('change');
-    }
+    if (cur === 'sun') return r < 0.62 ? 'sun' : r < 0.87 ? 'cloud' : 'rain';
+    if (cur === 'cloud') return r < 0.42 ? 'sun' : r < 0.80 ? 'cloud' : 'rain';
+    return r < 0.30 ? 'cloud' : r < 0.42 ? 'sun' : 'rain';
   }
+  forecast() { return this._next || this.mode; }
 
   spawnFactor() { return this.mode === 'rain' ? 0.6 : this.mode === 'cloud' ? 0.85 : 1; }
 

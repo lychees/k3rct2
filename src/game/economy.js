@@ -20,7 +20,12 @@ export class Economy {
     // 当月收支分类
     this.cur = this.blankMonth();
     this.history = [];          // 已结算月份
+    this.ratingHistory = [];    // 评分曲线(月采样,公园面板图表)
     this.listeners = { month: [], change: [] };
+  }
+  sampleRating() {
+    this.ratingHistory.push(Math.round(this.parkRating));
+    if (this.ratingHistory.length > 48) this.ratingHistory.shift();
   }
   blankMonth() {
     return { 建设: 0, 景观: 0, 门票: 0, 设施: 0, 商店: 0, 工资: 0, 研发: 0, 利息: 0 };
@@ -77,6 +82,7 @@ export class Economy {
     this.history.push({ ...this.cur, 月份: this.dateStr() });
     if (this.history.length > 16) this.history.shift();
     this.cur = this.blankMonth();
+    this.sampleRating();
     this.monthIdx++;
     if (this.monthIdx >= MONTH_NAMES.length) { this.monthIdx = 0; this.year++; }
     // 贷款利息(1%/月)

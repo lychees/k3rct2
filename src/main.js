@@ -27,7 +27,10 @@ import { ADDON, MAP_W, MAP_H, H_UNIT } from './config.js';
 
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+try {   // 画质偏好(设置面板可调)
+  if (localStorage.getItem('rct2js-quality') === 'low') renderer.setPixelRatio(1);
+  else renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+} catch { renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); }
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
@@ -102,6 +105,10 @@ function buildGame(world, isMP) {
   game.scenery = new Scenery(world, scene);
   game.rides = new Rides(game);
   game.peeps = isMP ? new RemotePeeps(game) : new Peeps(game);
+  try {   // 游客上限偏好
+    const pc = parseInt(localStorage.getItem('rct2js-peepcap') || '260', 10);
+    if (game.peeps.cap !== undefined) game.peeps.cap = Math.max(40, Math.min(260, pc || 260));
+  } catch { /* 忽略 */ }
   game.staff = new Staff(game);
   game.tools = new Tools(game);
   game.audio = new Sfx();
