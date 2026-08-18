@@ -90,6 +90,7 @@ function buildGame(world, isMP) {
     renderer, scene, world, terrain, camera: isoCam, picker,
     paused: false, time: 0, mp: isMP,
   };
+  isoCam.game = game;   // 触屏平移需感知当前工具
   game.economy = new Economy(game);
   game.research = new Research(game);
   game.messages = new Messages();
@@ -174,6 +175,14 @@ async function bootSingle(fromMP = false, lvId = null) {
     applyScenario(game, sc);
   } else {
     game.messages.add('欢迎来到 RCT2.js!修路 → 建设施 → 开放,吸引游客吧');
+    let seen = null;
+    try { seen = localStorage.getItem('rct2js-tut'); } catch { /* 忽略 */ }
+    if (!seen) {   // 首次开局:新手指引三连
+      try { localStorage.setItem('rct2js-tut', '1'); } catch { /* 忽略 */ }
+      game.messages.add('新手指引:工具栏「路径」在草地上铺路,再建「游乐设施」接游客');
+      game.messages.add('新手指引:设施窗口里「设入口/设出口」接到路径,然后点「开放」');
+      game.messages.add('新手指引:点游客可以看状态;「研发」解锁更多设施;奖杯图标是关卡');
+    }
   }
   if (fromMP) game.messages.add('多人服务器未连接(纯静态托管不支持联机),已转单人模式');
   installLoop(game);

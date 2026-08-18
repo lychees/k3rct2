@@ -51,6 +51,14 @@ export const TRACK_STYLES = {
     physics: 'flume', liftV: 1.6, minV: 1.0, gravityScale: 0.85, screamV: 4,
     stationCost: 350,
   },
+  monorail: {  // 悬挂单轨:高架箱形梁 + 悬挂车厢,匀速巡航
+    pieces: ['station', 'flat', 'left', 'right'],
+    kind: 'monorail', beamCol: 0xc8c8d0, supportCol: 0x8a8d8f,
+    canopyCol: 0xe87a30,
+    cars: 4, perCar: 2, carGap: 1.5, carBody: 'monorail',
+    physics: 'cruise', cruiseV: 3.0, screamV: 1e9,
+    stationCost: 350,
+  },
 };
 
 export function outDirOf(pc) {
@@ -162,6 +170,15 @@ function buildCarBody(style, i, mat) {
       new THREE.MeshLambertMaterial({ color: 0x6d4522 }));
     rim.position.y = 0.44;
     car.add(body, rim);
+  } else if (style.carBody === 'monorail') {   // 悬挂车厢:吊挂在上方轨道梁下
+    const bodyCols = [0xe87a30, 0x3a7ad8, 0x48b050, 0xc86ad8];
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.6, 1.35),
+      new THREE.MeshLambertMaterial({ color: bodyCols[i % 4] }));
+    body.position.y = -1.9;
+    const hanger = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.7, 0.14),
+      new THREE.MeshLambertMaterial({ color: 0x303038 }));
+    hanger.position.y = -0.85;
+    car.add(body, hanger);
   } else {
     const carCols = [0xd84a3a, 0xe8b830, 0x3a7ad8, 0x48b050];
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.42, 1.1),
@@ -183,16 +200,25 @@ export function buildCustomCoaster(game, ride) {
   const group = new THREE.Group();
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   let trackMesh = null;
-  const cars = [];
-  for (let i = 0; i < style.cars; i++) {
-    const car = buildCarBody(style, i, mat);
-    group.add(car);
-    cars.push(car);
+  // 车厢组:最多 2 列列车,每列 style.cars 节(第 2 列只在长轨道启用)
+  const carSets = [];
+  for (let t = 0; t < 2; t++) {
+    const set = [];
+    for (let i = 0; i < style.cars; i++) {
+      const car = buildCarBody(style, i, mat);
+      group.add(car);
+      set.push(car);
+    }
+    carSets.push(set);
   }
 
-  const state = { s: 0, v: 0, mode: 'load', timer: 0, stationIdx: 0 };
+  const TRAINS = [
+    { s: 0, v: 0, mode: 'load', timer: 0, stationIdx: 0, lapArmed: false },
+    { s: 0, v: 0, mode: 'load', timer: 0, stationIdx: 0, lapArmed: false },
+  ];
+  const state = TRAINS[0];   // 兼容旧接口(serialize/快照同步第 1 列)
   let external = null;
-  let S = null;   // 采样缓存:{pts, meta, segLen[], total, station:[i0,i1], hMax}
+  let S = null;   // 采样缓存:{pts, meta, segLen[], total, stops, hMax, nTrains}
 
   function rebuild() {
     if (trackMesh) { group.remove(trackMesh); trackMesh.geometry.dispose(); }
@@ -207,7 +233,10 @@ export function buildCustomCoaster(game, ride) {
       const tx = q.x - p.x, tz = q.z - p.z;
       const tl = Math.hypot(tx, tz) || 1;
       const ox = -tz / tl, oz = tx / tl;   // 单位侧向
-      if (style.kind === 'channel') {
+      if (style.kind === 'monorail') {
+        // 高架箱形梁(车厢悬挂其下)
+        b.bar([p.x, p.y + 2.3, p.z], [q.x, q.y + 2.3, q.z], 0.32, 0.26, style.beamCol, 1);
+      } else if (style.kind === 'channel') {
         // 水槽:两侧壁 + 水面
         b.bar([p.x - ox * 0.5, p.y + 0.18, p.z - oz * 0.5], [q.x - ox * 0.5, q.y + 0.18, q.z - oz * 0.5], 0.1, 0.36, style.wallCol, 1);
         b.bar([p.x + ox * 0.5, p.y + 0.18, p.z + oz * 0.5], [q.x + ox * 0.5, q.y + 0.18, q.z + oz * 0.5], 0.1, 0.36, style.wallCol, 1);
@@ -239,7 +268,8 @@ export function buildCustomCoaster(game, ride) {
         const gtx = World.worldToTileX(p.x), gty = World.worldToTileY(p.z);
         if (w.in(gtx, gty)) {
           const ground = w.surfaceY(gtx, gty);
-          const hgt = p.y - 0.28 - ground;
+          const topY = style.kind === 'monorail' ? p.y + 2.1 : p.y - 0.28;   // 单轨支架顶到梁底
+          const hgt = topY - ground;
           if (hgt > 0.3) {
             if (hgt > 1.6) {
               b.post(p.x - 0.5, ground, p.z, 0.09, hgt, style.supportCol, 1);
@@ -284,16 +314,20 @@ export function buildCustomCoaster(game, ride) {
         if (last && last.i1 === i - 1) last.i1 = i;
         else stops.push({ i0: i, i1: i });
       }
-      S = { pts, meta, rolls, segLen, total, stops, hMax };
-      for (const car of cars) car.visible = true;
+      // 列车数:轨道够长时上第 2 列(简单闭塞)
+      const nTrains = M >= 36 ? 2 : 1;
+      S = { pts, meta, rolls, segLen, total, stops, hMax, nTrains };
+      if (nTrains > 1) {   // 第 2 列从半圈处出发
+        Object.assign(TRAINS[1], { s: M / 2, v: 1.5, mode: 'run', timer: 0, stationIdx: 0, lapArmed: true });
+      }
+      carSets.forEach((set, si) => { for (const car of set) car.visible = si < nTrains; });
     } else {
       S = null;
-      for (const car of cars) car.visible = false;
+      for (const set of carSets) for (const car of set) car.visible = false;
     }
   }
 
   const G = 10.5;
-  let lapArmed = false;
 
   function poseCar(car, sArc) {
     const M = S.pts.length;
@@ -312,70 +346,96 @@ export function buildCustomCoaster(game, ride) {
     car.rotateY(yaw); car.rotateX(pitch); car.rotateZ(roll);
   }
 
+  function stepTrain(tr, ti, dt) {
+    const M = S.pts.length;
+    if (tr.mode === 'load') {
+      tr.timer -= dt;
+      if (tr.timer <= 0 && (ride.status === 'open' || ride.status === 'test')) {
+        const myRiders = ride.riders.some(p => (p._trainIdx ?? 0) === ti);
+        if (myRiders || ride.status === 'test') { tr.mode = 'run'; tr.v = 1.6; tr.lapArmed = false; }
+        else tr.timer = 0.5;
+      }
+      return;
+    }
+    const i = ((Math.floor(tr.s) % M) + M) % M;
+    const m = S.meta[i];
+    const y = S.pts[i].y;
+    if (style.physics === 'cruise') {
+      tr.v += (style.cruiseV - tr.v) * Math.min(1, dt * 3);
+    } else {
+      if (m === 'lift') {
+        tr.v = style.liftV;
+        const now = game.time || 0;   // 链条咔嗒声
+        if (game.audio && now - (ride._clackAt ?? -9) > 0.38) { ride._clackAt = now; game.audio.play('clack'); }
+      }
+      else if (m === 'brake') tr.v += (1.6 - tr.v) * Math.min(1, dt * 3);
+      else if (m === 'station') tr.v = Math.max(tr.v, 1.5);   // 站台链条推进
+      else {
+        const target = Math.max(style.minV, Math.sqrt(Math.max(0, 2 * G * (S.hMax - y))) * style.gravityScale);
+        tr.v += (target - tr.v) * Math.min(1, dt * 2.2);
+      }
+    }
+    // 推进(采样索引 → 弧长)
+    tr.s += tr.v * dt / (S.segLen[i] || 0.3);
+    // 俯冲尖叫:高速 + 前方明显下降(节流 4s)
+    if (game.audio && tr.v > style.screamV) {
+      const i2 = ((Math.floor(tr.s) % M) + M) % M;
+      const now = game.time || 0;
+      if (S.pts[(i2 + 3) % M].y - S.pts[i2].y < -0.4 && now - (ride._screamAt ?? -9) > 4) {
+        ride._screamAt = now;
+        game.audio.play('scream');
+        game.audio.play('rumble');
+      }
+    }
+    const sMod = ((tr.s % M) + M) % M;
+    const stops = S.stops;
+    if (stops.length) {
+      const next = (tr.stationIdx + 1) % stops.length;   // 下一站
+      const { i0, i1 } = stops[next];
+      if (sMod > i1 + 1 || sMod < i0 - 1) tr.lapArmed = true;  // 已驶离上一站区域
+      if (tr.lapArmed && sMod >= i0 && sMod <= i1) {           // 进站 → 停靠上下客
+        // 站台被另一列占用时等闭塞
+        const occupied = TRAINS.some((o, oi) => oi < S.nTrains && oi !== ti && o.mode === 'load' && o.stationIdx === next);
+        if (!occupied) {
+          tr.s = i0;
+          tr.mode = 'load';
+          tr.timer = ride.status === 'open' ? 3.2 : 2.0;
+          tr.v = 0;
+          tr.stationIdx = next;
+          tr.lapArmed = false;
+          game.rides.trainStop(ride, next, ti);
+        }
+      }
+    }
+  }
+
+  // 简单闭塞:与前车保持 ~4.5 世界单位
+  function blockClamp(me, ahead) {
+    if (me.mode !== 'run') return;
+    const M = S.pts.length;
+    const avg = S.total / M;
+    const gap = ((((ahead.s - me.s) % M) + M) % M) * avg;
+    if (gap < 4.5) me.v = Math.min(me.v, Math.max(0.5, ahead.v));
+  }
+
   function trainUpdate(dt) {
     if (!S) return;   // 未闭环:静止
     if (external) {
       state.s = external.s; state.mode = external.mode;
-    } else if (state.mode === 'load') {
-      state.timer -= dt;
-      if (state.timer <= 0 && (ride.status === 'open' || ride.status === 'test')) {
-        if (ride.riders.length > 0 || ride.status === 'test') { state.mode = 'run'; state.v = 1.6; lapArmed = false; }
-        else state.timer = 0.5;
-      }
     } else {
-      const M = S.pts.length;
-      const i = ((Math.floor(state.s) % M) + M) % M;
-      const m = S.meta[i];
-      const y = S.pts[i].y;
-      if (style.physics === 'cruise') {
-        state.v += (style.cruiseV - state.v) * Math.min(1, dt * 3);
-      } else {
-        if (m === 'lift') {
-          state.v = style.liftV;
-          const now = game.time || 0;   // 链条咔嗒声
-          if (game.audio && now - (ride._clackAt ?? -9) > 0.38) { ride._clackAt = now; game.audio.play('clack'); }
-        }
-        else if (m === 'brake') state.v += (1.6 - state.v) * Math.min(1, dt * 3);
-        else if (m === 'station') state.v = Math.max(state.v, 1.5);   // 站台链条推进
-        else {
-          const target = Math.max(style.minV, Math.sqrt(Math.max(0, 2 * G * (S.hMax - y))) * style.gravityScale);
-          state.v += (target - state.v) * Math.min(1, dt * 2.2);
-        }
-      }
-      // 推进(采样索引 → 弧长)
-      state.s += state.v * dt / (S.segLen[i] || 0.3);
-      // 俯冲尖叫:高速 + 前方明显下降(节流 4s)
-      if (game.audio && state.v > style.screamV) {
-        const i2 = ((Math.floor(state.s) % M) + M) % M;
-        const now = game.time || 0;
-        if (S.pts[(i2 + 3) % M].y - S.pts[i2].y < -0.4 && now - (ride._screamAt ?? -9) > 4) {
-          ride._screamAt = now;
-          game.audio.play('scream');
-          game.audio.play('rumble');
-        }
-      }
-      const sMod = ((state.s % M) + M) % M;
-      const stops = S.stops;
-      if (stops.length) {
-        const next = (state.stationIdx + 1) % stops.length;   // 下一站
-        const { i0, i1 } = stops[next];
-        if (sMod > i1 + 1 || sMod < i0 - 1) lapArmed = true;  // 已驶离上一站区域
-        if (lapArmed && sMod >= i0 && sMod <= i1) {           // 进站 → 停靠上下客
-          state.s = i0;
-          state.mode = 'load';
-          state.timer = ride.status === 'open' ? 3.2 : 2.0;
-          state.v = 0;
-          state.stationIdx = next;
-          lapArmed = false;
-          game.rides.trainStop(ride, next);
-        }
+      for (let ti = 0; ti < S.nTrains; ti++) stepTrain(TRAINS[ti], ti, dt);
+      if (S.nTrains > 1) {
+        blockClamp(TRAINS[0], TRAINS[1]);
+        blockClamp(TRAINS[1], TRAINS[0]);
       }
     }
     const avg = S.total / S.pts.length;
-    cars.forEach((car, ci) => {
-      const sArc = state.s * avg - ci * style.carGap;
-      poseCar(car, ((sArc % S.total) + S.total) % S.total);
-    });
+    for (let ti = 0; ti < S.nTrains; ti++) {
+      carSets[ti].forEach((car, ci) => {
+        const sArc = TRAINS[ti].s * avg - ci * style.carGap;
+        poseCar(car, ((sArc % S.total) + S.total) % S.total);
+      });
+    }
   }
 
   rebuild();
@@ -385,16 +445,26 @@ export function buildCustomCoaster(game, ride) {
     update: (dt) => trainUpdate(dt),
     rebuild,                       // 加段/撤销后重建
     state,
+    trains: TRAINS,                // 多列车(装客按 load 中的列车找)
+    get nTrains() { return S ? S.nTrains : 0; },
     setExternal: (s, mode) => { external = { s, mode }; },
     serialize: () => ({ s: state.s, mode: state.mode }),
     restore: (d) => { if (d) { state.s = d.s || 0; state.mode = d.mode || 'load'; } },
-    // 游客落点:每节车厢/船 perCar 人(绝对世界坐标)
+    // 游客落点:所在列车车厢内(每节 perCar 人;单轨在悬挂舱内)
     riderPos(i, out) {
-      const car = cars[Math.min(style.cars - 1, (i / style.perCar) | 0)];
-      const k = i % style.perCar;
-      out.x = car.position.x + (k & 1 ? 0.16 : -0.16);
-      out.y = car.position.y + 0.42;
-      out.z = car.position.z + (k > 1 ? 0.3 : 0);
+      const peep = ride.riders[i];
+      const ti = peep?._trainIdx ?? 0;
+      const set = carSets[ti] || carSets[0];
+      // 列内序号(在该列车乘客里的次序)
+      let k = 0;
+      if (peep) {
+        for (let j = 0; j < i; j++) if ((ride.riders[j]._trainIdx ?? 0) === ti) k++;
+      } else k = i;
+      const car = set[Math.min(style.cars - 1, (k / style.perCar) | 0)];
+      const q = k % style.perCar;
+      out.x = car.position.x + (q & 1 ? 0.16 : -0.16);
+      out.y = car.position.y + (style.carBody === 'monorail' ? -1.55 : 0.42);
+      out.z = car.position.z + (q > 1 ? 0.3 : 0);
     },
   };
 }

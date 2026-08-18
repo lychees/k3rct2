@@ -14,6 +14,7 @@ import { Research, RESEARCH_QUEUE } from '../src/game/research.js';
 import { applyAction } from '../src/game/actions.js';
 import { SCENARIOS, applyScenario, unlockNext } from '../src/game/scenarios.js';
 import { canFinish } from '../src/game/coasterEdit.js';
+import { checkAchievements } from '../src/game/achievements.js';
 import { Sfx } from '../src/core/audio.js';
 import { PATH, TILE, H_UNIT, MAP_W, MAP_H } from '../src/config.js';
 
@@ -109,7 +110,7 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
 // 乘坐可见:全部带 riderPos 的设施都能给出有限落点
 {
   const flatIds = ['carousel', 'ferris', 'twist', 'haunted', 'bumper', 'pirate', 'tower',
-    'slide', 'teacups', 'chairs', 'droptower', 'frisbee', 'topspin'];
+    'slide', 'teacups', 'chairs', 'droptower', 'frisbee', 'topspin', 'maze', 'golf'];
   const mat2 = new THREE.MeshLambertMaterial({ vertexColors: true });
   for (const id of flatIds) {
     const def = DEF_BY_ID[id];
@@ -159,6 +160,7 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
   const PLANS = [
     ['mycoaster', ['lift', 'lift', 'right', 'flat', 'right', 'down', 'down', 'flat', 'right', 'flat', 'right']],
     ['train', ['flat', 'right', 'flat', 'right', 'flat', 'right', 'left', 'right', 'right']],
+    ['monorail', ['flat', 'right', 'flat', 'right', 'flat', 'right', 'left', 'right', 'right']],
     ['flume', ['lift', 'lift', 'right', 'flat', 'right', 'down', 'down', 'flat', 'right', 'flat', 'right']],
     ['mycoaster+loop', ['lift', 'lift', 'right', 'flat', 'right', 'down', 'down', 'flat', 'right', 'loop', 'right']],
     ['mycoaster+cork', ['lift', 'steepup', 'right', 'flat', 'right', 'steepdown', 'down', 'cork', 'right', 'flat', 'right']],
@@ -280,6 +282,42 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
   assertT(r3.ok && ride.paint === 0xffffff, '涂装恢复默认');
 }
 
+// 多列车:长轨道自动上第二列,闭塞保持间距
+{
+  const SEQ = ['flat', 'flat', 'right', 'flat', 'flat', 'right', 'flat', 'flat', 'flat', 'right', 'flat', 'left', 'right', 'right', 'flat'];
+  let anchor = null;
+  outer7: for (let ay = ey + 16; ay < ey + 55; ay++) for (let ax = ex - 24; ax < ex + 20; ax++) {
+    if (!game.rides.canBeginCustom(ax, ay).ok) continue;
+    const fake = { def: DEF_BY_ID.mycoaster, pieces: [{ t: 'station', x: ax, y: ay, h: 0, dir: 1 }], baseY: game.world.maxH(ax, ay) * H_UNIT, custom: true, complete: false };
+    let okAll = true;
+    for (const t of SEQ) {
+      const chk = game.rides.canAddPiece(fake, t);
+      if (!chk.ok) { okAll = false; break; }
+      fake.pieces.push({ t, x: chk.x, y: chk.y, h: chk.h, dir: chk.dir });
+    }
+    if (okAll) { anchor = [ax, ay]; break outer7; }
+  }
+  assertT(!!anchor, '多列车:找到可建位置');
+  if (anchor) {
+    const b = game.rides.beginCustom('mycoaster', anchor[0], anchor[1], 1);
+    const ride = b.ride;
+    let allOk = !!b.ok;
+    for (const t of SEQ) {
+      const r = game.rides.addPiece(ride.id, t);
+      if (!r.ok) { allOk = false; console.error('段失败', t, r.reason); break; }
+    }
+    assertT(allOk, '多列车:铺轨 15 段');
+    assertT(game.rides.finishCustom(ride.id).ok, '多列车:闭环建成');
+    assertT(ride.api.nTrains === 2, `多列车:第二列车上线(nTrains=${ride.api.nTrains})`);
+    ride.status = 'test';
+    const s0 = ride.api.trains[1].s;
+    for (let t = 0; t < 60; t += 1 / 15) ride.api.update(1 / 15);
+    const moved = Math.abs(ride.api.trains[1].s - s0);
+    assertT(moved > 1, `多列车:第二列在跑(位移 ${moved.toFixed(1)})`);
+    game.rides.remove(ride.id);
+  }
+}
+
 // 设施老化与翻新
 {
   const ride = game.rides.list[0];
@@ -354,6 +392,16 @@ assertT(ra.ok && game.research.done.length === RESEARCH_QUEUE.length && game.res
     assertT(ride.guestsServed >= 4, `脚踏船:出船返航下客(服务 ${ride.guestsServed})`);
     game.rides.remove(ride.id);
   }
+}
+
+// 成就系统
+{
+  game.achievements = new Set();
+  game.economy.cash = 60000;
+  checkAchievements(game);
+  assertT(game.achievements.has('rich50k'), '成就:现金达标触发');
+  assertT(game.achievements.has('ride1'), '成就:开放设施触发');
+  assertT(game.achievements.has('guests100'), '成就:游客规模触发');
 }
 
 // 音效:无 window 环境下所有预设安全空转(不抛异常)

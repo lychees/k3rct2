@@ -48,6 +48,12 @@ export const RIDE_DEFS = [
     basePrice: 4.5, excitement: 55, intensity: 45, nausea: 20,
   },
   {
+    id: 'monorail', name: '悬挂单轨', kind: 'coaster', cat: 'ride', custom: true, style: 'monorail',
+    desc: '轨道编辑器:高架箱形梁,悬挂车厢巡游',
+    w: 1, h: 1, cost: 0, upkeep: 85, capacity: 8, duration: 0,
+    basePrice: 4, excitement: 48, intensity: 22, nausea: 10,
+  },
+  {
     id: 'burger', name: '汉堡店', kind: 'shop', cat: 'shop', desc: '游客饿了会来买', sells: 'food',
     w: 1, h: 1, cost: 350, upkeep: 15, capacity: 3, duration: 2.5,
     basePrice: 4.5, excitement: 0, intensity: 0, nausea: 8, build: (r, m) => buildStall(r, m, 0xd8a038, 0xa03028, '堡'),
@@ -136,6 +142,16 @@ export const RIDE_DEFS = [
     id: 'boats', name: '脚踏船', kind: 'boats', cat: 'ride', desc: '码头出发,湖上泛舟',
     w: 1, h: 1, cost: 900, upkeep: 35, capacity: 16, duration: 25,
     basePrice: 3, excitement: 38, intensity: 15, nausea: 6, build: buildBoats,
+  },
+  {
+    id: 'maze', name: '迷宫', kind: 'flat', cat: 'ride', desc: '绿篱迷宫,进去转一圈',
+    w: 4, h: 4, cost: 700, upkeep: 25, capacity: 12, duration: 20,
+    basePrice: 2.5, excitement: 34, intensity: 12, nausea: 5, build: buildMaze,
+  },
+  {
+    id: 'golf', name: '迷你高尔夫', kind: 'flat', cat: 'ride', desc: '三洞轻推,老少皆宜',
+    w: 3, h: 3, cost: 1100, upkeep: 35, capacity: 9, duration: 16,
+    basePrice: 3.5, excitement: 44, intensity: 16, nausea: 4, build: buildGolf,
   },
 ];
 export const DEF_BY_ID = Object.fromEntries(RIDE_DEFS.map(d => [d.id, d]));
@@ -685,6 +701,74 @@ function buildTopspin(ride, mat) {
       const lx = -1.05 + (i % 8) * 0.3, ly = -0.7;
       const ca = Math.cos(th), sa = Math.sin(th);
       out.x = cx + lx; out.y = topY + ly * ca; out.z = cz + ly * sa;
+    },
+  };
+}
+
+// 迷宫:绿篱迷宫(Π 形内墙),游客沿蛇形路径穿行
+function buildMaze(ride, mat) {
+  const g = new THREE.Group();
+  const b = new GeomBuilder();
+  const hedge = (x0, z0, x1, z1) => b.bar([x0, 0.45, z0], [x1, 0.45, z1], 0.34, 0.9, 0x2a6a26, 1);
+  // 外墙(南侧留入口)+ Π 形内墙
+  hedge(0.4, 0.4, 7.6, 0.4); hedge(0.4, 7.6, 0.4, 0.4); hedge(7.6, 0.4, 7.6, 7.6);
+  hedge(0.4, 7.6, 4.8, 7.6); hedge(6.0, 7.6, 7.6, 7.6);
+  hedge(2.6, 2.2, 2.6, 6.0); hedge(5.2, 2.2, 5.2, 6.0); hedge(2.6, 2.2, 5.2, 2.2);
+  g.add(meshOf(b, mat));
+  // 蛇形参观路径(绕内墙一圈,闭口回入口)
+  const WP = [[5.9, 8.2], [5.9, 6.8], [1.3, 6.8], [1.3, 1.3], [6.7, 1.3], [6.7, 6.8], [5.9, 6.8]];
+  const segs = [];
+  let total = 0;
+  for (let i = 0; i < WP.length - 1; i++) {
+    const l = Math.hypot(WP[i + 1][0] - WP[i][0], WP[i + 1][1] - WP[i][1]);
+    segs.push({ a: WP[i], b: WP[i + 1], l, acc: total });
+    total += l;
+  }
+  let t = 0;
+  const posAt = (u, out) => {
+    u = ((u % total) + total) % total;
+    for (const s of segs) {
+      if (u <= s.acc + s.l) {
+        const k = (u - s.acc) / s.l;
+        out.x = s.a[0] + (s.b[0] - s.a[0]) * k; out.z = s.a[1] + (s.b[1] - s.a[1]) * k;
+        return;
+      }
+    }
+    out.x = WP[0][0]; out.z = WP[0][1];
+  };
+  return {
+    group: g,
+    update: (dt, rd) => { t += dt * (0.3 + rd.animSpeed * 0.7); },
+    // 游客落点:沿迷宫路径缓行
+    riderPos(i, out) {
+      posAt(t * 1.1 + i * (total / 12), out);
+      out.y = 0.05;
+    },
+  };
+}
+
+// 迷你高尔夫:果岭 + 三洞,游客轮流推杆
+function buildGolf(ride, mat) {
+  const g = new THREE.Group();
+  const b = new GeomBuilder();
+  const cx = 1.5 * TILE, cz = 1.5 * TILE;
+  b.box(cx, 0.07, cz, 5.6, 0.14, 5.6, 0x58a848, 1);                  // 果岭
+  const holes = [[cx - 1.6, cz - 1.6], [cx + 1.6, cz - 1.4], [cx, cz + 1.8]];
+  holes.forEach(([hx, hz], i) => {
+    b.blob(hx, 0.15, hz, 0.14, 0x141810, 0.9);                        // 洞
+    b.post(hx + 0.25, 0.14, hz, 0.02, 0.9, 0xd8d8d8, 1);              // 旗杆
+    b.tri([hx + 0.25, 1.02, hz], [hx + 0.62, 0.88, hz], [hx + 0.25, 0.76, hz],
+      [[0, 0], [1, 0], [0, 1]], [0xd84a3a, 0x3a7ad8, 0xe8b830][i], 1); // 旗面
+  });
+  g.add(meshOf(b, mat));
+  let t = 0;
+  return {
+    group: g,
+    update: (dt, rd) => { t += dt * (0.3 + rd.animSpeed * 0.7); },
+    // 游客落点:分布在洞口推杆,周期性换洞
+    riderPos(i, out) {
+      const h = holes[(i + Math.floor(t / 5)) % 3];
+      out.x = h[0] + ((i % 3) - 1) * 0.3; out.y = 0.14; out.z = h[1] + 0.35;
     },
   };
 }
@@ -1343,10 +1427,10 @@ export class Rides {
     }
     const len = ride.pieces.length;
     const st = ride.def.style || 'coaster';
-    if (st === 'train') {
-      ride.excitement = Math.min(62, 30 + turns + Math.floor(len / 6));
-      ride.intensity = Math.min(25, 14 + Math.floor(len / 20));
-      ride.nausea = 8;
+    if (st === 'train' || st === 'monorail') {
+      ride.excitement = Math.min(66, (st === 'monorail' ? 36 : 30) + turns + Math.floor(len / 6));
+      ride.intensity = Math.min(30, (st === 'monorail' ? 20 : 14) + Math.floor(len / 20));
+      ride.nausea = st === 'monorail' ? 12 : 8;
     } else if (st === 'flume') {
       ride.excitement = Math.min(82, 45 + drops * 6 + Math.floor(len / 8));
       ride.intensity = Math.min(78, 38 + drops * 7);
@@ -1668,25 +1752,30 @@ export class Rides {
   // 轨道列车(过山车/小火车/激流勇进):load 时在当前停靠站装客
   _updateCoaster(ride) {
     if (ride.status !== 'open') return;
-    const st = ride.api.state;
+    const api = ride.api;
+    const st = api?.trains ? api.trains.find(t => t.mode === 'load' && t.timer <= 0.6) : api?.state;
     if (!st || st.mode !== 'load' || st.timer > 0.6) return;
+    const ti = api.trains ? api.trains.indexOf(st) : 0;
     const q = ride.queues?.[st.stationIdx ?? 0] || ride.queue;
     if (!q.length) return;
-    const n = Math.min(ride.def.capacity - ride.riders.length, q.length);   // 多站:可能已有过站乘客
+    const onTrain = ride.riders.filter(p => (p._trainIdx ?? 0) === ti).length;   // 该列车剩余座位
+    const n = Math.min(ride.def.capacity - onTrain, q.length);
     for (let i = 0; i < n; i++) {
       const peep = q.shift();
+      peep._trainIdx = ti;
       ride.riders.push(peep);
       this.game.peeps.boardRide(peep, ride);
     }
     this._repositionQueue(ride);
   }
 
-  // 定制列车停靠一站:到站下车(结算效果),过站乘客留在车上
-  trainStop(ride, stopIdx) {
+  // 定制列车停靠一站:到站下车(结算效果),过站乘客与其他列车乘客留在车上
+  trainStop(ride, stopIdx, trainIdx = null) {
     const g = this.game;
     const stay = [];
     for (const peep of ride.riders) {
-      if ((peep._destStation ?? 0) === stopIdx) {
+      const matchTrain = trainIdx == null || (peep._trainIdx ?? 0) === trainIdx;
+      if (matchTrain && (peep._destStation ?? 0) === stopIdx) {
         ride.guestsServed++;
         g.peeps.alightRide(peep, ride, ride.stations?.[stopIdx]?.outer || ride.exit.outer);
       } else stay.push(peep);

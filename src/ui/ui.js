@@ -5,6 +5,7 @@ import { Statusbar } from './statusbar.js';
 import { Panels } from './panels.js';
 import { openRideWindow } from './ridewin.js';
 import { openPeepWindow } from './peepwin.js';
+import { checkAchievements, ACH_DEFS } from '../game/achievements.js';
 
 export class UI {
   constructor(game) {
@@ -29,6 +30,8 @@ export class UI {
     this.statusbar.update();
     this.wm.refreshAll();
     this._ambientAudio();
+    this._achAcc = (this._achAcc || 0) + 0.25;
+    if (this._achAcc >= 1) { this._achAcc = 0; checkAchievements(this.game); }   // 成就每秒一查
   }
 
   // 环境音驱动:雨声随天气,人群随游客数,八音盒随最近的开放中旋转木马距离

@@ -290,6 +290,7 @@ export class SimHost {
         p.id, Math.round(p.x * 100), Math.round(p.z * 100),
         (p.hidden ? 1 : 0) | (p.hasSouvenir ? 2 : 0) | (p.hasUmbrella ? 4 : 0) | (p.kid ? 8 : 0),
         p.shirtIdx ?? 0, p.skinIdx ?? 0, p.pantsIdx ?? 0, p.balloonIdx ?? 0,
+        p.queueRide?.id ?? 0,   // 乘坐中的设施(客户端据此把游客画进设施)
       ]);
     }
     const coasters = [];

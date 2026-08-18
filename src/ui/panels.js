@@ -4,6 +4,7 @@ import { SCENERY_TYPES } from '../game/scenery.js';
 import { RIDE_DEFS, DEF_BY_ID } from '../game/rides.js';
 import { RESEARCH_LEVELS, RESEARCH_QUEUE } from '../game/research.js';
 import { SCENARIOS, maxUnlocked } from '../game/scenarios.js';
+import { ACH_DEFS } from '../game/achievements.js';
 import { COASTER_PIECES, TRACK_STYLES, canFinish } from '../game/coasterEdit.js';
 import { STAFF_ROLES } from '../game/staff.js';
 
@@ -278,7 +279,10 @@ export class Panels {
         <div>门票:${eco.fmt(eco.entranceFee)} · 贷款:${eco.fmt(eco.loan)}</div>
         <div class="rct-sep"></div>
         <div>目标:${go.text}</div>
-        <div>目标状态:${goalText}</div>`;
+        <div>目标状态:${goalText}</div>
+        <div class="rct-sep"></div>
+        <div>成就 ${(g.achievements || new Set()).size}/${ACH_DEFS.length}</div>` +
+        ACH_DEFS.map(a => `<div style="font-size:11px" class="${g.achievements?.has(a.id) ? 'pos' : 'hint'}">${g.achievements?.has(a.id) ? '✓' : '·'} ${a.name} — ${a.desc}</div>`).join('');
     };
     w.refresh();
   }

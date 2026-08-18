@@ -14,7 +14,7 @@ export class RemotePeeps {
   // 快照 = 数组的数组:[id, x*100, z*100, flags, shirt, skin, pants, balloon]
   applySnapshot(arr) {
     const seen = new Set();
-    for (const [id, xi, zi, flags, sh, sk, pa, ba] of arr) {
+    for (const [id, xi, zi, flags, sh, sk, pa, ba, rid] of arr) {
       seen.add(id);
       let r = this.map.get(id);
       if (!r) {
@@ -32,6 +32,8 @@ export class RemotePeeps {
       r.hasSouvenir = (flags & 2) !== 0;
       r.hasUmbrella = (flags & 4) !== 0;
       r.scale = (flags & 8) !== 0 ? 0.72 : 1;   // 儿童体型
+      r.queueRide = rid ? (this.game.rides?.findRide(rid) || null) : null;   // 乘坐中 → 画进设施
+      if (r.queueRide) r.state = 'ride';
     }
     for (const id of [...this.map.keys()]) if (!seen.has(id)) this.map.delete(id);
   }
@@ -51,7 +53,7 @@ export class RemotePeeps {
       r.walkT += dt * (d > 0.02 ? 1 : 0.2);
       const tx = World.worldToTileX(r.x), ty = World.worldToTileY(r.z);
       if (w.in(tx, ty)) r.tile = [tx, ty];
-      r.state = d > 0.02 ? 'walk' : 'idle';
+      if (!r.queueRide) r.state = d > 0.02 ? 'walk' : 'idle';   // 乘坐中状态由快照维持
       this.list.push(r);
     }
     this.renderer.render(this.list, dt);

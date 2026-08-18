@@ -34,6 +34,9 @@ export const RESEARCH_QUEUE = [
   { id: 'flume', cost: 200 },
   { id: 'cablecar', cost: 150 },
   { id: 'boats', cost: 130 },
+  { id: 'monorail', cost: 210 },
+  { id: 'maze', cost: 100 },
+  { id: 'golf', cost: 140 },
 ];
 
 export class Research {

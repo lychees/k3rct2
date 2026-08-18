@@ -36,6 +36,27 @@ export class IsoCamera {
     const end = e => { this._drag = null; };
     el.addEventListener('pointerup', end);
     el.addEventListener('pointercancel', end);
+    // 触屏:单指拖拽平移(未选工具时),双指捏合缩放
+    this._touches = new Map();
+    el.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch') this._touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    });
+    el.addEventListener('pointermove', e => {
+      if (e.pointerType !== 'touch' || !this._touches.has(e.pointerId)) return;
+      const prev = this._touches.get(e.pointerId);
+      if (this._touches.size === 2) {
+        const other = [...this._touches.entries()].find(([id]) => id !== e.pointerId)[1];
+        const dPrev = Math.hypot(prev.x - other.x, prev.y - other.y);
+        const dNow = Math.hypot(e.clientX - other.x, e.clientY - other.y);
+        if (Math.abs(dNow - dPrev) > 8) this.setZoom(this.zoomIdx + (dNow > dPrev ? 1 : -1));
+      } else if (this._touches.size === 1) {
+        if (!this.game?.tools?.tool) this.panScreen(e.clientX - prev.x, e.clientY - prev.y);   // 选了工具则留给建造拖拽
+      }
+      this._touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    });
+    const tEnd = e => { this._touches.delete(e.pointerId); };
+    el.addEventListener('pointerup', tEnd);
+    el.addEventListener('pointercancel', tEnd);
     el.addEventListener('wheel', e => {
       e.preventDefault();
       const dir = e.deltaY > 0 ? -1 : 1;   // 上滚放大
